@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Laptop, Search, Smartphone } from 'lucide-react'
 import { ShibaAvatar } from './ShibaAvatar'
+import { Language, t } from '../locales/i18n'
 
 interface Device {
   id: string
@@ -17,9 +18,17 @@ interface RadarProps {
   onDirectConnect?: (ip: string) => void
   onSpeedTest: (ip: string) => void
   theme?: 'dark' | 'light'
+  language?: Language
 }
 
-export const Radar: React.FC<RadarProps> = ({ devices, onSelectDevice, onDirectConnect, onSpeedTest, theme = 'dark' }) => {
+export const Radar: React.FC<RadarProps> = ({ 
+  devices, 
+  onSelectDevice, 
+  onDirectConnect, 
+  onSpeedTest, 
+  theme = 'dark',
+  language = 'en'
+}) => {
   const [directIp, setDirectIp] = useState('')
   const isLight = theme === 'light'
 
@@ -28,7 +37,7 @@ export const Radar: React.FC<RadarProps> = ({ devices, onSelectDevice, onDirectC
     const trimmed = directIp.trim()
     if (!trimmed) return
     if (!/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(trimmed)) {
-      alert('请输入有效的 IPv4 地址 (例如: 192.168.1.100)')
+      alert(t('invalidIpAlert', language))
       return
     }
     if (onDirectConnect) {
@@ -50,7 +59,7 @@ export const Radar: React.FC<RadarProps> = ({ devices, onSelectDevice, onDirectC
         }`}
       >
         <Search className={`w-4 h-4 animate-pulse ${isLight ? 'text-blue-600' : 'text-white/60'}`} />
-        <span className="text-xs font-medium">正在扫描局域网设备...</span>
+        <span className="text-xs font-medium">{t('scanning', language)}</span>
       </div>
 
       {/* Radar Animation Rings */}
@@ -122,7 +131,7 @@ export const Radar: React.FC<RadarProps> = ({ devices, onSelectDevice, onDirectC
                       : 'bg-blue-600/30 hover:bg-blue-500/50 text-blue-200 border-blue-500/40'
                   }`}
                 >
-                  发送文件
+                  {t('sendFile', language)}
                 </button>
                 <button
                   onClick={() => onSpeedTest(device.ip)}
@@ -132,7 +141,7 @@ export const Radar: React.FC<RadarProps> = ({ devices, onSelectDevice, onDirectC
                       : 'bg-emerald-600/30 hover:bg-emerald-500/50 text-emerald-200 border-emerald-500/40'
                   }`}
                 >
-                  🚀 测速
+                  {t('speedTest', language)}
                 </button>
               </div>
             </div>
@@ -145,8 +154,8 @@ export const Radar: React.FC<RadarProps> = ({ devices, onSelectDevice, onDirectC
         <div className={`text-center max-w-xs mt-20 select-none pointer-events-none ${
           isLight ? 'text-slate-400' : 'text-white/40'
         }`}>
-          <p className="text-sm font-medium">无其他在线设备</p>
-          <p className="text-xs mt-1">在其他电脑或手机上打开本应用即可自动连入</p>
+          <p className="text-sm font-medium">{t('noDevices', language)}</p>
+          <p className="text-xs mt-1">{t('noDevicesSub', language)}</p>
         </div>
       )}
 
@@ -162,7 +171,7 @@ export const Radar: React.FC<RadarProps> = ({ devices, onSelectDevice, onDirectC
         <div className="flex-1">
           <input
             type="text"
-            placeholder="输入局域网 IP 直连 (例: 192.168.0.6)"
+            placeholder={t('directIpPlaceholder', language)}
             value={directIp}
             onChange={(e) => setDirectIp(e.target.value)}
             className={`w-full border rounded-xl px-3 py-1.5 text-xs focus:outline-none transition-all ${
@@ -177,7 +186,7 @@ export const Radar: React.FC<RadarProps> = ({ devices, onSelectDevice, onDirectC
           disabled={!directIp.trim()}
           className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-medium text-xs px-4 py-2 rounded-xl transition-colors duration-200 shadow-sm shrink-0"
         >
-          直接连接
+          {t('directConnect', language)}
         </button>
       </form>
     </div>

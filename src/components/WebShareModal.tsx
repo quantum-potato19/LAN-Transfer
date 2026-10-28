@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import QRCode from 'qrcode'
 import { X, Copy, Check, Smartphone, Power, FileUp, Sparkles } from 'lucide-react'
+import { Language, t } from '../locales/i18n'
 
 interface ConnectedDevice {
   id: string
@@ -17,6 +18,7 @@ interface WebShareModalProps {
   theme?: 'dark' | 'light'
   connectedDevices?: ConnectedDevice[]
   onSelectDeviceToSend?: (device: ConnectedDevice) => void
+  language?: Language
 }
 
 export function WebShareModal({ 
@@ -24,7 +26,8 @@ export function WebShareModal({
   onClose, 
   theme = 'dark',
   connectedDevices = [],
-  onSelectDeviceToSend
+  onSelectDeviceToSend,
+  language = 'en'
 }: WebShareModalProps) {
   const [serverStatus, setServerStatus] = useState<{ isRunning: boolean; port: number; url: string; pin?: string }>({
     isRunning: false,
@@ -120,7 +123,7 @@ export function WebShareModal({
             onClose()
           }}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          title="关闭窗口"
+          title={t('webShareClose', language)}
           className={`titlebar-no-drag cursor-pointer z-50 absolute top-4 right-4 p-2 rounded-xl transition ${
             isLight ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100 active:bg-slate-200' : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700'
           }`}
@@ -133,8 +136,8 @@ export function WebShareModal({
             <Smartphone className="w-6 h-6" />
           </div>
           <div>
-            <h3 className={`text-lg font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>手机扫码免 APP 互传</h3>
-            <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>同一 WiFi 极速连接手机与电脑</p>
+            <h3 className={`text-lg font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{t('webShareTitle', language)}</h3>
+            <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>{t('webShareSub', language)}</p>
           </div>
         </div>
 
@@ -145,9 +148,9 @@ export function WebShareModal({
           <div className="flex items-center gap-3">
             <Power className={`w-5 h-5 ${serverStatus.isRunning ? 'text-emerald-500' : (isLight ? 'text-slate-400' : 'text-slate-500')}`} />
             <div>
-              <div className={`text-sm font-semibold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>网页共享服务</div>
+              <div className={`text-sm font-semibold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{t('webShareService', language)}</div>
               <div className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                {serverStatus.isRunning ? '服务运行中 (可免安装访问)' : '服务已关闭'}
+                {serverStatus.isRunning ? t('webShareRunning', language) : t('webShareStopped', language)}
               </div>
             </div>
           </div>
@@ -159,7 +162,7 @@ export function WebShareModal({
                 : (isLight ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : 'bg-slate-700 text-slate-300 hover:bg-slate-600')
             }`}
           >
-            {serverStatus.isRunning ? '运行中' : '开启服务'}
+            {serverStatus.isRunning ? t('webShareRunningBtn', language) : t('webShareStartBtn', language)}
           </button>
         </div>
 
@@ -177,7 +180,7 @@ export function WebShareModal({
                   </span>
                   <div className="truncate">
                     <div className={`text-xs font-bold truncate ${isLight ? 'text-emerald-900' : 'text-emerald-300'}`}>
-                      🟢 手机已连入 ({connectedDevices.length} 台)
+                      🟢 {t('webShareMobileConnected', language, { n: connectedDevices.length })}
                     </div>
                     <div className={`text-[10px] font-mono truncate ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
                       {connectedDevices[0].name} · {connectedDevices[0].ip}
@@ -188,7 +191,7 @@ export function WebShareModal({
                   onClick={() => onSelectDeviceToSend?.(connectedDevices[0])}
                   className="text-xs px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-semibold shrink-0 transition active:scale-95 shadow-sm"
                 >
-                  发文件
+                  {t('webShareSendToMobile', language)}
                 </button>
               </div>
             )}
@@ -201,7 +204,7 @@ export function WebShareModal({
             </div>
 
             <p className={`text-xs mb-3 text-center ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              使用手机自带相机或微信扫一扫直接访问
+              {t('webShareScanNotice', language)}
             </p>
 
             {/* PIN Display */}
@@ -210,7 +213,7 @@ export function WebShareModal({
                 isLight ? 'bg-amber-50/80 border-amber-200' : 'bg-amber-500/10 border-amber-500/20'
               }`}>
                 <span className={`text-xs font-medium ${isLight ? 'text-amber-800' : 'text-amber-300'}`}>
-                  连接配对码 (手动输入网址时使用):
+                  {t('webSharePinNotice', language)}
                 </span>
                 <span className="text-base font-extrabold font-mono tracking-widest text-amber-500">
                   {serverStatus.pin}
@@ -234,7 +237,7 @@ export function WebShareModal({
                 }`}
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                {copied ? '已复制' : '复制'}
+                {copied ? t('webShareCopied', language) : t('webShareCopy', language)}
               </button>
             </div>
 
@@ -244,13 +247,13 @@ export function WebShareModal({
               className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-lg shadow-blue-500/25"
             >
               <FileUp className="w-4 h-4" />
-              推送文件到手机网页下载区
+              {t('webSharePushFiles', language)}
             </button>
 
             {sharingSuccess && (
               <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
                 <Sparkles className="w-3.5 h-3.5" />
-                已添加到手机网页下载区！
+                {t('webSharePushedSuccess', language)}
               </div>
             )}
 
@@ -263,13 +266,13 @@ export function WebShareModal({
                   : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
               }`}
             >
-              关闭窗口
+              {t('webShareClose', language)}
             </button>
           </div>
         ) : (
           <div className="flex flex-col items-center">
             <div className={`text-center py-6 text-xs ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
-              点击上方按钮开启服务，即可展示二维码
+              {t('webShareStartNotice', language)}
             </div>
             <button
               onClick={onClose}
@@ -279,7 +282,7 @@ export function WebShareModal({
                   : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
               }`}
             >
-              关闭窗口
+              {t('webShareClose', language)}
             </button>
           </div>
         )}

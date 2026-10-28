@@ -18,6 +18,7 @@ import {
   AlertTriangle
 } from 'lucide-react'
 import { ShibaAvatar } from './components/ShibaAvatar'
+import { Language, t } from './locales/i18n'
 
 // TS interface definitions for electron API
 declare global {
@@ -90,7 +91,18 @@ const formatSpeed = (bytesPerSec: number): string => {
   return formatSize(bytesPerSec) + '/s'
 }
 
-const formatRemainingTime = (totalSeconds: number): string => {
+const formatRemainingTime = (totalSeconds: number, lang: Language = 'en'): string => {
+  if (lang === 'en') {
+    if (totalSeconds < 60) return `${totalSeconds}s`
+    if (totalSeconds < 3600) {
+      const minutes = Math.floor(totalSeconds / 60)
+      const seconds = totalSeconds % 60
+      return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
+    }
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
+  }
   if (totalSeconds < 60) {
     return `${totalSeconds} 秒`
   }
@@ -116,6 +128,9 @@ export default function App() {
   const [myIp, setMyIp] = useState('127.0.0.1')
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('theme') as 'dark' | 'light') || 'dark'
+  })
+  const [language, setLanguage] = useState<Language>(() => {
+    return (localStorage.getItem('language') as Language) || 'en'
   })
   
   // Transfers states
@@ -563,6 +578,7 @@ export default function App() {
           onPause={handlePause}
           onResume={handleResume}
           onCancel={requestCancelTransfer}
+          language={language}
         />
 
         {/* App Main Area */}
@@ -575,6 +591,7 @@ export default function App() {
             myIp={myIp}
             hasActiveTransfer={hasActiveTransfer}
             onOpenWebShare={() => setIsWebShareOpen(true)}
+            language={language}
           />
 
           {/* Tab Pages */}
@@ -582,7 +599,14 @@ export default function App() {
             
             {/* 1. SEND VIEW */}
             {activeTab === 'send' && (
-              <Radar devices={devices} onSelectDevice={handleSelectDevice} onDirectConnect={handleDirectConnect} onSpeedTest={handleStartSpeedTest} theme={theme} />
+              <Radar 
+                devices={devices} 
+                onSelectDevice={handleSelectDevice} 
+                onDirectConnect={handleDirectConnect} 
+                onSpeedTest={handleStartSpeedTest} 
+                theme={theme}
+                language={language}
+              />
             )}
 
             {/* 2. HISTORY VIEW */}
@@ -590,13 +614,13 @@ export default function App() {
               <div className="p-8 text-white max-w-3xl mx-auto h-full flex flex-col">
                 <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
                   <ArrowRightLeft className="w-5 h-5 text-blue-400" />
-                  <span>文件传输记录</span>
+                  <span>{t('historyTitle', language)}</span>
                 </h2>
                 
                 {history.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-white/30">
                     <HistoryIcon className="w-12 h-12 stroke-[1.5] mb-2" />
-                    <p className="text-sm">暂无传输历史</p>
+                    <p className="text-sm">{t('historyEmpty', language)}</p>
                   </div>
                 ) : (
                   <div className="space-y-3 overflow-y-auto pr-2 flex-1">
@@ -616,7 +640,7 @@ export default function App() {
                               {record.fileName}
                             </p>
                             <p className="text-[10px] text-white/40 mt-0.5">
-                              {record.direction === 'outgoing' ? '发送给' : '接收自'} <span className="font-bold text-white/60">{record.peerName}</span>
+                              {record.direction === 'outgoing' ? t('historySentTo', language) : t('historyReceivedFrom', language)} <span className="font-bold text-white/60">{record.peerName}</span>
                             </p>
                           </div>
                         </div>
@@ -630,17 +654,17 @@ export default function App() {
                           {record.status === 'completed' ? (
                             <span className="flex items-center gap-1 text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full border border-green-500/30 font-semibold">
                               <CheckCircle className="w-3 h-3" />
-                              成功
+                              {t('historySuccess', language)}
                             </span>
                           ) : record.status === 'cancelled' ? (
                             <span className="flex items-center gap-1 text-[10px] bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full border border-yellow-500/30 font-semibold">
                               <XCircle className="w-3 h-3 text-yellow-400" />
-                              中止
+                              {t('historyCancelled', language)}
                             </span>
                           ) : (
                             <span className="flex items-center gap-1 text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full border border-red-500/30 font-semibold">
                               <XCircle className="w-3 h-3" />
-                              {record.status === 'declined' ? '被拒绝' : '失败'}
+                              {record.status === 'declined' ? t('historyDeclined', language) : t('historyFailed', language)}
                             </span>
                           )}
                         </div>
@@ -665,12 +689,14 @@ export default function App() {
                         </div>
                         <div>
                           <h3 className="font-bold text-base text-white">
-                            {transferState.direction === 'outgoing' ? `正在发送文件至 ${transferState.peerName}` : `正在接收来自 ${transferState.peerName} 的文件`}
+                            {transferState.direction === 'outgoing' 
+                              ? `${t('transSendingTo', language)} ${transferState.peerName}` 
+                              : `${t('transReceivingFrom', language)} ${transferState.peerName}`}
                           </h3>
                           <p className="text-xs text-white/50 mt-1 flex items-center gap-2">
-                            <span>传输大小: {formatSize(transferState.totalSize)}</span>
+                            <span>{t('transSize', language)}: {formatSize(transferState.totalSize)}</span>
                             <span>•</span>
-                            <span>已传输: {formatSize(transferState.bytesTransferred)}</span>
+                            <span>{t('transTransferred', language)}: {formatSize(transferState.bytesTransferred)}</span>
                           </p>
                         </div>
                       </div>
@@ -678,11 +704,11 @@ export default function App() {
                       <div className="text-right">
                         <div className="text-xs font-bold text-white/80 uppercase">
                           {transferState.status === 'paused' ? (
-                            <span className="text-yellow-400">已暂停</span>
+                            <span className="text-yellow-400">{t('transPaused', language)}</span>
                           ) : transferState.direction === 'outgoing' ? (
-                            <span className="text-blue-400">发送中</span>
+                            <span className="text-blue-400">{t('transSending', language)}</span>
                           ) : (
-                            <span className="text-green-400">接收中</span>
+                            <span className="text-green-400">{t('transReceiving', language)}</span>
                           )}
                         </div>
                         <div className="text-xl font-black font-mono mt-1 text-blue-400">
@@ -706,13 +732,13 @@ export default function App() {
                         ></div>
                       </div>
                       <div className="flex justify-between text-xs text-white/40 font-mono">
-                        <span>速度: {transferState.status === 'paused' ? '0 B/s' : formatSpeed(transferState.speed)}</span>
+                        <span>{t('transSpeed', language)}: {transferState.status === 'paused' ? '0 B/s' : formatSpeed(transferState.speed)}</span>
                         <span>
                           {transferState.status === 'paused'
-                            ? '已暂停'
+                            ? t('transPaused', language)
                             : transferState.speed > 0
-                            ? `剩余: ${formatRemainingTime(Math.ceil((transferState.totalSize - transferState.bytesTransferred) / transferState.speed))}`
-                            : '计算中...'}
+                            ? `${t('islandRemaining', language)}: ${formatRemainingTime(Math.ceil((transferState.totalSize - transferState.bytesTransferred) / transferState.speed), language)}`
+                            : t('islandCalculating', language)}
                         </span>
                       </div>
                     </div>
@@ -725,7 +751,7 @@ export default function App() {
                           className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-xs font-bold tracking-wider text-white shadow-lg transition-all duration-200 border border-white/10 flex items-center gap-2"
                         >
                           <Play className="w-3.5 h-3.5 fill-current" />
-                          <span>继续传输</span>
+                          <span>{t('transContinue', language)}</span>
                         </button>
                       ) : (
                         <button
@@ -733,7 +759,7 @@ export default function App() {
                           className="px-6 py-2.5 rounded-xl bg-yellow-600 hover:bg-yellow-500 active:scale-95 text-xs font-bold tracking-wider text-white shadow-lg transition-all duration-200 border border-white/10 flex items-center gap-2"
                         >
                           <Pause className="w-3.5 h-3.5 fill-current" />
-                          <span>暂停传输</span>
+                          <span>{t('transPause', language)}</span>
                         </button>
                       )}
                       
@@ -746,15 +772,15 @@ export default function App() {
                         }`}
                       >
                         <XCircle className="w-3.5 h-3.5" />
-                        <span>中止传输</span>
+                        <span>{t('transAbort', language)}</span>
                       </button>
                     </div>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center text-white/30 p-8 border border-dashed border-white/10 rounded-3xl w-full py-16 bg-white/5">
                     <ArrowRightLeft className="w-12 h-12 stroke-[1.5] mb-4 text-white/20 animate-pulse" />
-                    <p className="text-sm font-semibold text-white/50">当前没有进行中的传输任务</p>
-                    <p className="text-xs text-white/30 mt-1">在主页选择局域网设备并发送文件即可在此查看详情</p>
+                    <p className="text-sm font-semibold text-white/50">{t('transNoActive', language)}</p>
+                    <p className="text-xs text-white/30 mt-1">{t('transNoActiveSub', language)}</p>
                   </div>
                 )}
               </div>
@@ -763,18 +789,18 @@ export default function App() {
             {/* 3. SETTINGS VIEW */}
             {activeTab === 'settings' && (
               <div className="p-8 text-white max-w-xl mx-auto">
-                <h2 className="text-xl font-bold mb-8">系统参数设置</h2>
+                <h2 className="text-xl font-bold mb-8">{t('settingsTitle', language)}</h2>
 
                 <div className="space-y-6">
                   {/* Nickname modification */}
                   <div className="space-y-2">
-                    <label className="text-xs text-white/50 font-semibold tracking-wider uppercase block">用户昵称</label>
+                    <label className="text-xs text-white/50 font-semibold tracking-wider uppercase block">{t('settingsNickname', language)}</label>
                     <div className="flex gap-3">
                       <input
                         type="text"
                         value={tempNickname}
                         onChange={(e) => setTempNickname(e.target.value)}
-                        placeholder="请输入局域网昵称"
+                        placeholder={t('settingsNicknamePlaceholder', language)}
                         maxLength={20}
                         className="flex-1 bg-white/5 hover:bg-white/10 focus:bg-white/10 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-all duration-300 placeholder-white/30"
                       />
@@ -783,14 +809,14 @@ export default function App() {
                         disabled={!tempNickname.trim() || tempNickname === myNickname}
                         className="px-6 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 border border-white/10 hover:from-blue-600 hover:to-indigo-700 active:scale-95 text-xs font-semibold text-white shadow-lg transition-all duration-300 disabled:opacity-50 disabled:pointer-events-none"
                       >
-                        更新
+                        {t('settingsUpdate', language)}
                       </button>
                     </div>
                   </div>
 
                   {/* Avatar choosing */}
                   <div className="space-y-3">
-                    <label className="text-xs text-white/50 font-semibold tracking-wider uppercase block">选择柴犬头像配饰</label>
+                    <label className="text-xs text-white/50 font-semibold tracking-wider uppercase block">{t('settingsAvatar', language)}</label>
                     <div className="grid grid-cols-6 gap-3">
                       {[0, 1, 2, 3, 4, 5].map((idx) => (
                         <button
@@ -816,7 +842,7 @@ export default function App() {
 
                   {/* Theme settings */}
                   <div className="space-y-3">
-                    <label className="text-xs text-white/50 font-semibold tracking-wider uppercase block">界面主题</label>
+                    <label className="text-xs text-white/50 font-semibold tracking-wider uppercase block">{t('settingsTheme', language)}</label>
                     <div className="flex gap-4">
                       <button
                         onClick={() => {
@@ -829,7 +855,7 @@ export default function App() {
                             : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/70'
                         }`}
                       >
-                        黑夜
+                        {t('settingsThemeDark', language)}
                       </button>
                       <button
                         onClick={() => {
@@ -842,7 +868,40 @@ export default function App() {
                             : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/70'
                         }`}
                       >
-                        白天
+                        {t('settingsThemeLight', language)}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Language settings */}
+                  <div className="space-y-3">
+                    <label className="text-xs text-white/50 font-semibold tracking-wider uppercase block">{t('settingsLanguage', language)}</label>
+                    <div className="flex gap-4">
+                      <button
+                        onClick={() => {
+                          setLanguage('en')
+                          localStorage.setItem('language', 'en')
+                        }}
+                        className={`flex-1 py-3 rounded-2xl border text-center transition-all duration-300 font-semibold text-xs ${
+                          language === 'en'
+                            ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20'
+                            : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/70'
+                        }`}
+                      >
+                        {t('settingsLangEn', language)}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setLanguage('zh')
+                          localStorage.setItem('language', 'zh')
+                        }}
+                        className={`flex-1 py-3 rounded-2xl border text-center transition-all duration-300 font-semibold text-xs ${
+                          language === 'zh'
+                            ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20'
+                            : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/70'
+                        }`}
+                      >
+                        {t('settingsLangZh', language)}
                       </button>
                     </div>
                   </div>
@@ -851,7 +910,7 @@ export default function App() {
                   <div className="pt-6 border-t border-white/10 space-y-4">
                     <div className="flex justify-between items-center bg-white/5 border border-white/5 p-4 rounded-xl">
                       <div>
-                        <span className="text-[11px] text-white/40 uppercase block">本机局域网 IP</span>
+                        <span className="text-[11px] text-white/40 uppercase block">{t('settingsLocalIp', language)}</span>
                         <span className="text-sm font-semibold font-mono mt-0.5 block">{myIp}</span>
                       </div>
                       <Laptop className="w-5 h-5 text-white/30" />
@@ -859,7 +918,7 @@ export default function App() {
 
                     <div className="flex justify-between items-center bg-white/5 border border-white/5 p-4 rounded-xl">
                       <div className="flex-1 mr-4 overflow-hidden">
-                        <span className="text-[11px] text-white/40 uppercase block">默认接收文件夹</span>
+                        <span className="text-[11px] text-white/40 uppercase block">{t('settingsSaveDir', language)}</span>
                         <span className="text-xs font-semibold text-white/80 mt-0.5 block truncate" title={saveDir}>{saveDir}</span>
                       </div>
                       <button
@@ -872,7 +931,7 @@ export default function App() {
                         }}
                         className="bg-white/10 hover:bg-white/15 active:scale-95 text-xs text-white border border-white/15 px-4 py-2 rounded-lg transition-all shrink-0"
                       >
-                        更改
+                        {t('settingsChange', language)}
                       </button>
                     </div>
                   </div>
@@ -896,6 +955,7 @@ export default function App() {
                 }}
                 onSend={handleSendFiles}
                 theme={theme}
+                language={language}
               />
             )}
 
@@ -922,22 +982,22 @@ export default function App() {
                     }`}>
                       <ShibaAvatar index={0} size={54} />
                     </div>
-                    <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>文件接收请求</h3>
+                    <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{t('incomingTitle', language)}</h3>
                     <p className={`text-xs mt-1 ${theme === 'dark' ? 'text-white/50' : 'text-slate-500'}`}>
-                      来自 <span className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-slate-800'}`}>{incomingTransfer.senderName}</span>
+                      {t('incomingFrom', language)} <span className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-slate-800'}`}>{incomingTransfer.senderName}</span>
                     </p>
                   </div>
 
                   <div className={`p-4 rounded-2xl mb-6 text-xs text-center border ${
                     theme === 'dark' ? 'bg-white/5 border-white/5 text-white/60' : 'bg-slate-50 border-slate-200 text-slate-600'
                   }`}>
-                    <p>准备发送给您：</p>
+                    <p>{t('incomingWantsToSend', language)}</p>
                     <p className={`font-bold text-sm mt-1.5 truncate max-w-xs ${
                       theme === 'dark' ? 'text-white/95' : 'text-slate-900'
                     }`} title={incomingTransfer.files[0]?.name}>
-                      {incomingTransfer.files[0]?.name} {incomingTransfer.files.length > 1 ? `等 ${incomingTransfer.files.length} 个文件` : ''}
+                      {incomingTransfer.files[0]?.name} {incomingTransfer.files.length > 1 ? t('incomingAndOthers', language, { n: incomingTransfer.files.length }) : ''}
                     </p>
-                    <p className="text-[10px] text-blue-500 font-mono mt-1 font-semibold">总大小: {formatSize(incomingTransfer.totalSize)}</p>
+                    <p className="text-[10px] text-blue-500 font-mono mt-1 font-semibold">{t('totalSize', language)}: {formatSize(incomingTransfer.totalSize)}</p>
                   </div>
 
                   <div className="flex gap-3">
@@ -945,13 +1005,13 @@ export default function App() {
                       onClick={() => handleAcceptIncoming(false)}
                       className="flex-1 py-3 rounded-2xl bg-red-500/20 hover:bg-red-500/30 active:scale-95 text-red-500 font-semibold border border-red-500/25 text-sm transition-all duration-300"
                     >
-                      拒绝
+                      {t('incomingDecline', language)}
                     </button>
                     <button
                       onClick={() => handleAcceptIncoming(true)}
                       className="flex-1 py-3 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 active:scale-95 text-white font-semibold border border-white/10 shadow-lg shadow-blue-500/25 text-sm transition-all duration-300"
                     >
-                      同意接收
+                      {t('incomingAccept', language)}
                     </button>
                   </div>
 
@@ -973,6 +1033,7 @@ export default function App() {
             setIsWebShareOpen(false)
             handleAddMoreFiles()
           }}
+          language={language}
         />
 
         {/* Speedtest Dashboard Modal (Adaptive Light/Dark Theme, No Spin Circle, Big Rolling Mbps) */}
@@ -999,7 +1060,7 @@ export default function App() {
                   handleCloseSpeedTest()
                 }}
                 style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-                title="关闭测速窗口"
+                title={t('close', language)}
                 className={`titlebar-no-drag cursor-pointer z-50 absolute top-4 right-4 p-2 rounded-xl transition ${
                   theme === 'dark'
                     ? 'text-white/40 hover:text-white hover:bg-white/10'
@@ -1013,10 +1074,10 @@ export default function App() {
               
               {/* Header */}
               <h3 className={`font-extrabold text-base mb-1 flex items-center gap-2 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                <span>🚀 局域网通道测速</span>
+                <span>{t('speedTestTitle', language)}</span>
               </h3>
               <p className={`text-xs mb-4 ${theme === 'dark' ? 'text-white/60' : 'text-slate-500'}`}>
-                目标设备: <span className="font-mono font-semibold text-sky-500">{speedTestState.targetIp}</span> (纯网络吞吐，无磁盘写入)
+                {t('speedTestTarget', language)}: <span className="font-mono font-semibold text-sky-500">{speedTestState.targetIp}</span> {t('speedTestPureThroughput', language)}
               </p>
               
               {/* Speed Display Card (No Spinner Circle) */}
@@ -1024,7 +1085,7 @@ export default function App() {
                 theme === 'dark' ? 'bg-[#0f172a] border-white/5' : 'bg-slate-50 border-slate-200'
               }`}>
                 <span className={`text-[10px] font-semibold uppercase tracking-wider mb-1 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>
-                  {speedTestState.isRunning ? '实时物理带宽 (Real-time)' : '最终平均带宽 (Average Bandwidth)'}
+                  {speedTestState.isRunning ? t('speedTestRealtime', language) : t('speedTestAverage', language)}
                 </span>
                 <div className="flex items-baseline gap-1.5 my-1">
                   <span className="text-4xl font-black font-mono text-sky-500 tracking-tight">
@@ -1033,7 +1094,7 @@ export default function App() {
                   <span className="text-sm font-bold text-sky-500">Mbps</span>
                 </div>
                 <span className={`text-[10px] font-mono ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}>
-                  约 {((speedTestState.speedMbps || 0) / 8).toFixed(1)} MB/s
+                  {t('speedTestApprox', language)} {((speedTestState.speedMbps || 0) / 8).toFixed(1)} MB/s
                 </span>
               </div>
 
@@ -1048,7 +1109,7 @@ export default function App() {
               {/* Dynamic Status & Diagnostics */}
               {speedTestState.isRunning ? (
                 <div className="flex flex-col items-center gap-3 w-full my-2">
-                  <p className="text-xs text-sky-500 animate-pulse font-medium">⚡ 全速多通道吞吐测流中，请稍候...</p>
+                  <p className="text-xs text-sky-500 animate-pulse font-medium">{t('speedTestRunning', language)}</p>
                   <button
                     onClick={handleCloseSpeedTest}
                     className={`text-xs px-4 py-1.5 rounded-xl border transition-colors ${
@@ -1057,7 +1118,7 @@ export default function App() {
                         : 'border-slate-300 text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                     }`}
                   >
-                    取消测速
+                    {t('speedTestCancel', language)}
                   </button>
                 </div>
               ) : (
@@ -1070,12 +1131,12 @@ export default function App() {
                   }`}>
                     {(speedTestState.speedMbps || 0) < 220 ? (
                       <div>
-                        <p className="font-bold mb-1">⚠️ 局域网带宽偏低 (约 {((speedTestState.speedMbps || 0)).toFixed(0)} Mbps) 排查建议：</p>
-                        <p>1. <strong>代理/梯子卡顿</strong>：请关闭梯子/TUN代理软件（代理软件常限制本地回环吞吐在 20MB/s 左右）。</p>
-                        <p className="mt-0.5">2. <strong>WiFi频段</strong>：确认电脑与手机连接的是 5GHz WiFi，避开 2.4GHz。</p>
+                        <p className="font-bold mb-1">{t('speedTestSlowTitle', language, { mbps: (speedTestState.speedMbps || 0).toFixed(0) })}</p>
+                        <p>{t('speedTestSlowTip1', language)}</p>
+                        <p className="mt-0.5">{t('speedTestSlowTip2', language)}</p>
                       </div>
                     ) : (
-                      <p className="font-semibold text-center">⚡ 良好 5GHz WiFi / 千兆局域网通道！传输速度优异。</p>
+                      <p className="font-semibold text-center">{t('speedTestGoodNotice', language)}</p>
                     )}
                   </div>
 
@@ -1083,7 +1144,7 @@ export default function App() {
                     onClick={handleCloseSpeedTest}
                     className="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold text-xs py-2.5 rounded-xl border border-white/10 transition-all duration-200 shadow-lg shadow-blue-500/20"
                   >
-                    确定
+                    {t('speedTestOk', language)}
                   </button>
                 </div>
               )}
@@ -1112,10 +1173,10 @@ export default function App() {
                 <AlertTriangle className="w-7 h-7" />
               </div>
               <h3 className={`font-bold text-lg mb-1.5 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                确定中止文件传输？
+                {t('cancelTitle', language)}
               </h3>
               <p className={`text-xs mb-6 leading-relaxed ${theme === 'dark' ? 'text-white/60' : 'text-slate-500'}`}>
-                中止后当前任务将立即中断，未传输完成的文件将不会保留。
+                {t('cancelDesc', language)}
               </p>
               <div className="flex gap-3 w-full">
                 <button
@@ -1126,7 +1187,7 @@ export default function App() {
                       : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700'
                   }`}
                 >
-                  取消
+                  {t('cancelBack', language)}
                 </button>
                 <button
                   onClick={() => {
@@ -1135,7 +1196,7 @@ export default function App() {
                   }}
                   className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 text-white text-xs font-semibold shadow-lg shadow-red-500/25 transition-all"
                 >
-                  确认中止
+                  {t('cancelConfirm', language)}
                 </button>
               </div>
             </div>
@@ -1162,10 +1223,10 @@ export default function App() {
                 <AlertTriangle className="w-7 h-7" />
               </div>
               <h3 className={`font-bold text-lg mb-1.5 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                正在传输中，确定退出应用？
+                {t('closeTitle', language)}
               </h3>
               <p className={`text-xs mb-6 leading-relaxed ${theme === 'dark' ? 'text-white/60' : 'text-slate-500'}`}>
-                当前仍有进行中的局域网文件传输任务，强制退出将立即中止所有传输。
+                {t('closeDesc', language)}
               </p>
               <div className="flex gap-3 w-full">
                 <button
@@ -1176,7 +1237,7 @@ export default function App() {
                       : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700'
                   }`}
                 >
-                  继续传输
+                  {t('closeContinue', language)}
                 </button>
                 <button
                   onClick={() => {
@@ -1185,7 +1246,7 @@ export default function App() {
                   }}
                   className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 text-white text-xs font-semibold shadow-lg shadow-red-500/25 transition-all"
                 >
-                  强制退出
+                  {t('closeForceExit', language)}
                 </button>
               </div>
             </div>

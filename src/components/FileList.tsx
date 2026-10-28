@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react'
 import { File, Trash2, Send, X, Plus, FolderPlus } from 'lucide-react'
+import { Language, t } from '../locales/i18n'
 
 interface SelectedFile {
   path: string
@@ -23,6 +24,7 @@ interface FileListProps {
   onCancel: () => void
   onSend: () => void
   theme?: 'dark' | 'light'
+  language?: Language
 }
 
 // Utility to format file size
@@ -42,7 +44,8 @@ export const FileList: React.FC<FileListProps> = ({
   onAddMoreFolders,
   onCancel,
   onSend,
-  theme = 'dark'
+  theme = 'dark',
+  language = 'en'
 }) => {
   const totalSize = files.reduce((acc, f) => acc + f.size, 0)
   const isLight = theme === 'light'
@@ -84,7 +87,7 @@ export const FileList: React.FC<FileListProps> = ({
             </div>
             <div>
               <h2 className={`font-bold text-base leading-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                发送给 {targetDevice.name}
+                {t('sendTo', language)} {targetDevice.name}
               </h2>
               <p className={`text-[10px] font-mono mt-0.5 ${isLight ? 'text-slate-500' : 'text-white/50'}`}>
                 {targetDevice.ip}
@@ -93,7 +96,7 @@ export const FileList: React.FC<FileListProps> = ({
           </div>
           <button 
             onClick={onCancel}
-            title="关闭"
+            title={t('close', language)}
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             className={`titlebar-no-drag p-2 rounded-xl transition-colors ${
               isLight ? 'hover:bg-slate-100 text-slate-400 hover:text-slate-700' : 'hover:bg-white/10 text-white/70 hover:text-white'
@@ -128,7 +131,7 @@ export const FileList: React.FC<FileListProps> = ({
               
               <button
                 onClick={() => onRemoveFile(idx)}
-                title="移除文件"
+                title={t('removeFile', language)}
                 className={`p-2 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300 flex-shrink-0 ${
                   isLight ? 'text-slate-400 hover:text-red-600 hover:bg-red-50' : 'text-white/30 hover:text-red-400 hover:bg-white/5'
                 }`}
@@ -144,11 +147,11 @@ export const FileList: React.FC<FileListProps> = ({
           isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
         }`}>
           <div>
-            <span className={`block ${isLight ? 'text-slate-500' : 'text-white/50'}`}>待发送文件</span>
-            <span className={`font-bold text-sm ${isLight ? 'text-slate-900' : 'text-white/90'}`}>{files.length} 个文件</span>
+            <span className={`block ${isLight ? 'text-slate-500' : 'text-white/50'}`}>{t('pendingFiles', language)}</span>
+            <span className={`font-bold text-sm ${isLight ? 'text-slate-900' : 'text-white/90'}`}>{files.length} {t('filesCount', language)}</span>
           </div>
           <div className="text-right">
-            <span className={`block ${isLight ? 'text-slate-500' : 'text-white/50'}`}>总大小</span>
+            <span className={`block ${isLight ? 'text-slate-500' : 'text-white/50'}`}>{t('totalSize', language)}</span>
             <span className="font-bold text-sm text-blue-500">{formatSize(totalSize)}</span>
           </div>
         </div>
@@ -162,7 +165,7 @@ export const FileList: React.FC<FileListProps> = ({
             }`}
           >
             <Plus className="w-3.5 h-3.5" />
-            添加文件
+            {t('addFiles', language)}
           </button>
           
           {onAddMoreFolders && (
@@ -173,7 +176,7 @@ export const FileList: React.FC<FileListProps> = ({
               }`}
             >
               <FolderPlus className="w-3.5 h-3.5" />
-              添加文件夹
+              {t('addFolder', language)}
             </button>
           )}
 
@@ -183,7 +186,7 @@ export const FileList: React.FC<FileListProps> = ({
             className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 active:scale-95 text-white text-xs font-semibold border border-white/10 shadow-lg shadow-blue-500/25 transition-all duration-300 disabled:opacity-50 disabled:pointer-events-none"
           >
             <Send className="w-3.5 h-3.5" />
-            开始发送
+            {t('sendNow', language)}
           </button>
         </div>
 

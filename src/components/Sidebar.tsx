@@ -2,6 +2,7 @@ import React from 'react'
 import { Send, History, Settings, ArrowRightLeft, Smartphone } from 'lucide-react'
 import { ShibaAvatar } from './ShibaAvatar'
 import logoImg from '../../logo.png'
+import { Language, t } from '../locales/i18n'
 
 interface SidebarProps {
   activeTab: string
@@ -11,6 +12,7 @@ interface SidebarProps {
   myIp: string
   hasActiveTransfer?: boolean
   onOpenWebShare?: () => void
+  language?: Language
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -20,7 +22,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   myAvatarIndex,
   myIp,
   hasActiveTransfer,
-  onOpenWebShare
+  onOpenWebShare,
+  language = 'en'
 }) => {
   return (
     <div className="w-64 liquid-glass-sidebar flex flex-col justify-between h-full p-6 text-white select-none border-r border-white/10">
@@ -47,7 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             } rounded-r-md`}
           >
             <Send className="w-4 h-4" />
-            <span>发送文件</span>
+            <span>{t('send', language)}</span>
           </button>
           
           <button
@@ -60,7 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <div className="flex items-center gap-4">
               <ArrowRightLeft className="w-4 h-4" />
-              <span>正在传输</span>
+              <span>{t('transferring', language)}</span>
             </div>
             {hasActiveTransfer && (
               <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] animate-pulse mr-1"></span>
@@ -76,7 +79,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             } rounded-r-md`}
           >
             <History className="w-4 h-4" />
-            <span>传输历史</span>
+            <span>{t('history', language)}</span>
           </button>
 
           <button
@@ -88,7 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             } rounded-r-md`}
           >
             <Settings className="w-4 h-4" />
-            <span>系统设置</span>
+            <span>{t('settings', language)}</span>
           </button>
 
           {onOpenWebShare && (
@@ -97,7 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className="w-full flex items-center gap-3 px-4 py-3 mt-4 bg-gradient-to-r from-sky-500/20 to-blue-500/20 hover:from-sky-500/30 hover:to-blue-500/30 border border-sky-500/30 text-sky-300 font-medium text-sm rounded-xl transition shadow-lg shadow-sky-500/10"
             >
               <Smartphone className="w-4 h-4 text-sky-400" />
-              <span>手机扫码互传</span>
+              <span>{t('mobileShare', language)}</span>
             </button>
           )}
         </nav>

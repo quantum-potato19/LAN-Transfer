@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { ArrowUp, ArrowDown, Check, AlertCircle, Play, Pause, XCircle, X } from 'lucide-react'
+import { Language, t } from '../locales/i18n'
 
 interface TransferState {
   id: string
@@ -17,6 +18,7 @@ interface DynamicIslandProps {
   onPause?: () => void
   onResume?: () => void
   onCancel?: () => void
+  language?: Language
 }
 
 const formatSize = (bytes: number): string => {
@@ -35,7 +37,8 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
   transferState,
   onPause,
   onResume,
-  onCancel
+  onCancel,
+  language = 'en'
 }) => {
   const [visible, setVisible] = useState(false)
   const [isDismissed, setIsDismissed] = useState(false)
@@ -119,13 +122,19 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                   )}
                 </div>
                 <span className="text-[11px] font-semibold tracking-wide flex items-center gap-1.5">
-                  {isSending ? `发送至 ${transferState.peerName || '设备'}` : `来自 ${transferState.peerName || '设备'}`}
-                  {transferState.status === 'paused' && <span className="text-yellow-400 text-[10px] bg-yellow-500/10 px-1.5 py-0.2 rounded border border-yellow-500/20 font-medium">已暂停</span>}
+                  {isSending 
+                    ? `${t('islandSendingTo', language)} ${transferState.peerName || 'Device'}` 
+                    : `${t('islandReceivingFrom', language)} ${transferState.peerName || 'Device'}`}
+                  {transferState.status === 'paused' && (
+                    <span className="text-yellow-400 text-[10px] bg-yellow-500/10 px-1.5 py-0.2 rounded border border-yellow-500/20 font-medium">
+                      {t('islandPaused', language)}
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-white/50 font-mono">
-                  {transferState.status === 'paused' ? '已暂停' : formatSpeed(transferState.speed)}
+                  {transferState.status === 'paused' ? t('islandPaused', language) : formatSpeed(transferState.speed)}
                 </span>
                 <span className={`text-xs font-bold font-mono ${transferState.status === 'paused' ? 'text-yellow-400' : 'text-blue-400'}`}>{percentage}%</span>
                 <button
@@ -134,7 +143,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                     setIsDismissed(true)
                   }}
                   className="p-1 -mr-1 rounded-md text-white/40 hover:text-white hover:bg-white/10 transition-colors pointer-events-auto"
-                  title="收起浮窗 (后台继续传输)"
+                  title={t('islandDismiss', language)}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -168,7 +177,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                       onResume?.()
                     }}
                     className="p-1 rounded hover:bg-white/10 text-white/80 hover:text-white transition-colors"
-                    title="继续传输"
+                    title={t('islandResume', language)}
                   >
                     <Play className="w-3.5 h-3.5 fill-current" />
                   </button>
@@ -179,7 +188,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                       onPause?.()
                     }}
                     className="p-1 rounded hover:bg-white/10 text-white/80 hover:text-white transition-colors"
-                    title="暂停传输"
+                    title={t('islandPause', language)}
                   >
                     <Pause className="w-3.5 h-3.5 fill-current" />
                   </button>
@@ -190,17 +199,17 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                     onCancel?.()
                   }}
                   className="px-1.5 py-0.5 rounded hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-colors flex items-center gap-1"
-                  title="中止传输"
+                  title={t('islandAbort', language)}
                 >
                   <XCircle className="w-3.5 h-3.5" />
-                  <span className="text-[9px] font-semibold text-red-400">中止</span>
+                  <span className="text-[9px] font-semibold text-red-400">{t('islandAbort', language)}</span>
                 </button>
                 <span className="text-[9px] text-white/40 ml-1">
                   {transferState.status === 'paused'
-                    ? '已暂停'
+                    ? t('islandPaused', language)
                     : transferState.speed > 0
-                    ? `剩余时间: ${Math.ceil((transferState.totalSize - transferState.bytesTransferred) / transferState.speed)}秒`
-                    : '计算中...'}
+                    ? `${t('islandRemaining', language)}: ${Math.ceil((transferState.totalSize - transferState.bytesTransferred) / transferState.speed)}${t('islandSeconds', language)}`
+                    : t('islandCalculating', language)}
                 </span>
               </div>
             </div>
@@ -213,7 +222,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
             <div className="w-5 h-5 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center">
               <Check className="w-3 h-3 stroke-[3]" />
             </div>
-            <span className="text-xs font-bold text-green-300">传输已成功完成</span>
+            <span className="text-xs font-bold text-green-300">{t('islandCompleted', language)}</span>
           </div>
         )}
 
@@ -224,7 +233,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
               <AlertCircle className="w-3 h-3" />
             </div>
             <span className="text-xs font-bold text-red-300">
-              {transferState.status === 'declined' ? '接收端拒绝了传输' : '传输中断，请重试'}
+              {transferState.status === 'declined' ? t('islandDeclined', language) : t('islandFailed', language)}
             </span>
           </div>
         )}
