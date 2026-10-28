@@ -24,6 +24,7 @@ declare global {
   interface Window {
     electronAPI: {
       selectFiles: () => Promise<{ path: string; name: string; size: number }[]>;
+      selectDirectoryToSend: () => Promise<{ path: string; name: string; size: number }[]>;
       sendFiles: (targetIp: string, files: { path: string; name: string; size: number }[], transferId: string) => Promise<{ success: boolean; error?: string }>;
       acceptTransfer: (id: string, accept: boolean) => Promise<boolean>;
       getMyNickname: () => Promise<string>;
@@ -34,19 +35,21 @@ declare global {
       minimizeWindow: () => void;
       maximizeWindow: () => void;
       closeWindow: () => void;
+      forceCloseWindow: () => void;
       selectDirectory: () => Promise<string | null>;
       getSaveDir: () => Promise<string>;
       setSaveDir: (dir: string) => Promise<string>;
       pauseTransfer: (id: string) => Promise<boolean>;
       resumeTransfer: (id: string) => Promise<boolean>;
       cancelTransfer: (id: string) => Promise<boolean>;
-      getWebServerStatus: () => Promise<{ isRunning: boolean; port: number; url: string }>;
-      toggleWebServer: (enable: boolean) => Promise<{ isRunning: boolean; port: number; url: string }>;
+      getWebServerStatus: () => Promise<{ isRunning: boolean; port: number; url: string; pin?: string }>;
+      toggleWebServer: (enable: boolean) => Promise<{ isRunning: boolean; port: number; url: string; pin?: string }>;
       shareFileToWeb: (filePath: string) => Promise<boolean>;
       startSpeedTest: (targetIp: string) => Promise<{ success: boolean; speedMbps?: number; error?: string }>;
       onDeviceListUpdate: (callback: (devices: any[]) => void) => () => void;
       onTransferProgress: (callback: (data: any) => void) => () => void;
       onIncomingTransfer: (callback: (data: { id: string; senderName: string; files: any[]; totalSize: number }) => void) => () => void;
+      onConfirmAppClose: (callback: () => void) => () => void;
     }
   }
 }
@@ -123,6 +126,7 @@ export default function App() {
   const [isWebShareOpen, setIsWebShareOpen] = useState(false)
   const [speedTestState, setSpeedTestState] = useState<{ isRunning: boolean; speedMbps?: number; progress?: number; targetIp?: string } | null>(null)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [showAppCloseConfirm, setShowAppCloseConfirm] = useState(false)
 
   // Tracking speed calculations
   const lastTimeRef = useRef(Date.now())
@@ -257,10 +261,15 @@ export default function App() {
       }
     })
 
+    const unsubscribeClose = window.electronAPI.onConfirmAppClose ? window.electronAPI.onConfirmAppClose(() => {
+      setShowAppCloseConfirm(true)
+    }) : () => {}
+
     return () => {
       unsubscribeDevices()
       unsubscribeIncoming()
       unsubscribeProgress()
+      unsubscribeClose()
     }
   }, [])
 
@@ -272,9 +281,15 @@ export default function App() {
 
     if (status === 'completed') {
       completedIdsRef.current.add(data.id)
+      if (completedIdsRef.current.size > 100) {
+        completedIdsRef.current.clear()
+      }
+      if (cancelledIdsRef.current.size > 100) {
+        cancelledIdsRef.current.clear()
+      }
     }
 
-    // Add to history
+    // Add to history (capped to 100 records)
     const isOutgoing = data.direction === 'outgoing'
     const newRecord: TransferRecord = {
       id: data.id,
@@ -290,7 +305,7 @@ export default function App() {
       if (prev.some(item => item.id === data.id)) {
         return prev
       }
-      return [newRecord, ...prev]
+      return [newRecord, ...prev].slice(0, 100)
     })
 
     if (status === 'cancelled') {
@@ -380,6 +395,13 @@ export default function App() {
 
   const handleAddMoreFiles = async () => {
     const files = await window.electronAPI.selectFiles()
+    if (files && files.length > 0) {
+      setSelectedFiles(prev => [...prev, ...files])
+    }
+  }
+
+  const handleAddMoreFolders = async () => {
+    const files = await window.electronAPI.selectDirectoryToSend()
     if (files && files.length > 0) {
       setSelectedFiles(prev => [...prev, ...files])
     }
@@ -836,6 +858,7 @@ export default function App() {
                 targetDevice={selectedDevice}
                 onRemoveFile={handleRemoveFile}
                 onAddMoreFiles={handleAddMoreFiles}
+                onAddMoreFolders={handleAddMoreFolders}
                 onCancel={() => {
                   setSelectedDevice(null)
                   setSelectedFiles([])
@@ -847,12 +870,18 @@ export default function App() {
 
             {/* 2. Incoming transfer request modal */}
             {incomingTransfer && !transferState && (
-              <div className={`absolute inset-0 flex items-center justify-center p-6 z-40 animate-fade-in transition-colors duration-200 ${
-                theme === 'dark' ? 'bg-black/60' : 'bg-slate-900/30'
-              } backdrop-blur-md`}>
-                <div className={`w-full max-w-sm rounded-3xl p-6 border shadow-2xl flex flex-col transition-colors duration-200 ${
-                  theme === 'dark' ? 'liquid-glass-panel border-white/20 text-white' : 'bg-white border-slate-200 text-slate-800 shadow-2xl'
-                }`}>
+              <div 
+                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                className={`absolute inset-0 flex items-center justify-center p-6 z-40 animate-fade-in titlebar-no-drag transition-colors duration-200 ${
+                  theme === 'dark' ? 'bg-black/60' : 'bg-slate-900/30'
+                } backdrop-blur-md`}
+              >
+                <div 
+                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                  className={`w-full max-w-sm rounded-3xl p-6 border shadow-2xl flex flex-col titlebar-no-drag transition-colors duration-200 ${
+                    theme === 'dark' ? 'liquid-glass-panel border-white/20 text-white' : 'bg-white border-slate-200 text-slate-800 shadow-2xl'
+                  }`}
+                >
                   
                   <div className={`flex flex-col items-center text-center pb-4 mb-4 border-b ${
                     theme === 'dark' ? 'border-white/10' : 'border-slate-200'
@@ -907,27 +936,46 @@ export default function App() {
           isOpen={isWebShareOpen} 
           onClose={() => setIsWebShareOpen(false)} 
           theme={theme}
+          connectedDevices={devices.filter(d => (d as any).isMobile || d.port === 12139)}
+          onSelectDeviceToSend={(device) => {
+            setSelectedDevice(device as any)
+            setIsWebShareOpen(false)
+            handleAddMoreFiles()
+          }}
         />
 
         {/* Speedtest Dashboard Modal (Adaptive Light/Dark Theme, No Spin Circle, Big Rolling Mbps) */}
         {speedTestState && (
-          <div className={`fixed inset-0 flex items-center justify-center z-50 p-4 select-none transition-colors duration-200 ${
-            theme === 'dark' ? 'bg-black/60' : 'bg-slate-900/30'
-          } backdrop-blur-md`}>
-            <div className={`rounded-3xl p-6 w-full max-w-sm flex flex-col items-center text-center shadow-2xl relative overflow-hidden border transition-colors duration-200 ${
-              theme === 'dark' ? 'bg-[#1e293b] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-2xl'
-            }`}>
+          <div 
+            onClick={(e) => {
+              if (e.target === e.currentTarget) handleCloseSpeedTest()
+            }}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            className={`fixed inset-0 flex items-center justify-center z-50 p-4 select-none titlebar-no-drag transition-colors duration-200 ${
+              theme === 'dark' ? 'bg-black/60' : 'bg-slate-900/30'
+            } backdrop-blur-md`}
+          >
+            <div 
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              className={`rounded-3xl p-6 w-full max-w-sm flex flex-col items-center text-center shadow-2xl relative overflow-hidden border titlebar-no-drag transition-colors duration-200 ${
+                theme === 'dark' ? 'bg-[#1e293b] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-2xl'
+              }`}
+            >
               {/* Close Button at top-right (ALWAYS visible) */}
               <button
-                onClick={handleCloseSpeedTest}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleCloseSpeedTest()
+                }}
+                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                 title="关闭测速窗口"
-                className={`absolute top-4 right-4 p-1.5 rounded-xl transition ${
+                className={`titlebar-no-drag cursor-pointer z-50 absolute top-4 right-4 p-2 rounded-xl transition ${
                   theme === 'dark'
                     ? 'text-white/40 hover:text-white hover:bg-white/10'
                     : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5 pointer-events-none" />
               </button>
 
               <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl pointer-events-none"></div>
@@ -1014,12 +1062,21 @@ export default function App() {
 
         {/* Cancel Transfer Confirmation Modal */}
         {showCancelConfirm && (
-          <div className={`fixed inset-0 flex items-center justify-center z-50 p-4 select-none transition-colors duration-200 ${
-            theme === 'dark' ? 'bg-black/60' : 'bg-slate-900/30'
-          } backdrop-blur-md`}>
-            <div className={`rounded-3xl p-6 w-full max-w-sm flex flex-col items-center text-center shadow-2xl relative overflow-hidden border transition-colors duration-200 animate-in fade-in zoom-in-95 ${
-              theme === 'dark' ? 'bg-[#1e293b] border-white/10 text-white shadow-[0_25px_60px_-15px_rgba(0,0,0,0.5)]' : 'bg-white border-slate-200 text-slate-900 shadow-2xl'
-            }`}>
+          <div 
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowCancelConfirm(false)
+            }}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            className={`fixed inset-0 flex items-center justify-center z-50 p-4 select-none titlebar-no-drag transition-colors duration-200 ${
+              theme === 'dark' ? 'bg-black/60' : 'bg-slate-900/30'
+            } backdrop-blur-md`}
+          >
+            <div 
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              className={`rounded-3xl p-6 w-full max-w-sm flex flex-col items-center text-center shadow-2xl relative overflow-hidden border titlebar-no-drag transition-colors duration-200 animate-in fade-in zoom-in-95 ${
+                theme === 'dark' ? 'bg-[#1e293b] border-white/10 text-white shadow-[0_25px_60px_-15px_rgba(0,0,0,0.5)]' : 'bg-white border-slate-200 text-slate-900 shadow-2xl'
+              }`}
+            >
               <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center mb-4">
                 <AlertTriangle className="w-7 h-7" />
               </div>
@@ -1048,6 +1105,56 @@ export default function App() {
                   className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 text-white text-xs font-semibold shadow-lg shadow-red-500/25 transition-all"
                 >
                   确认中止
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* App Exit Confirmation Modal during Active Transfer */}
+        {showAppCloseConfirm && (
+          <div 
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowAppCloseConfirm(false)
+            }}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            className={`fixed inset-0 flex items-center justify-center z-50 p-4 select-none titlebar-no-drag transition-colors duration-200 ${
+              theme === 'dark' ? 'bg-black/60' : 'bg-slate-900/30'
+            } backdrop-blur-md`}
+          >
+            <div 
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              className={`rounded-3xl p-6 w-full max-w-sm flex flex-col items-center text-center shadow-2xl relative overflow-hidden border titlebar-no-drag transition-colors duration-200 animate-in fade-in zoom-in-95 ${
+                theme === 'dark' ? 'bg-[#1e293b] border-white/10 text-white shadow-[0_25px_60px_-15px_rgba(0,0,0,0.5)]' : 'bg-white border-slate-200 text-slate-900 shadow-2xl'
+              }`}
+            >
+              <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mb-4">
+                <AlertTriangle className="w-7 h-7" />
+              </div>
+              <h3 className={`font-bold text-lg mb-1.5 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                正在传输中，确定退出应用？
+              </h3>
+              <p className={`text-xs mb-6 leading-relaxed ${theme === 'dark' ? 'text-white/60' : 'text-slate-500'}`}>
+                当前仍有进行中的局域网文件传输任务，强制退出将立即中止所有传输。
+              </p>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => setShowAppCloseConfirm(false)}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-all ${
+                    theme === 'dark'
+                      ? 'bg-white/5 hover:bg-white/10 border-white/10 text-white/80'
+                      : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700'
+                  }`}
+                >
+                  继续传输
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAppCloseConfirm(false)
+                    window.electronAPI.forceCloseWindow()
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 text-white text-xs font-semibold shadow-lg shadow-red-500/25 transition-all"
+                >
+                  强制退出
                 </button>
               </div>
             </div>

@@ -1,5 +1,5 @@
 import React from 'react'
-import { File, Trash2, Send, X, Plus } from 'lucide-react'
+import { File, Trash2, Send, X, Plus, FolderPlus } from 'lucide-react'
 
 interface SelectedFile {
   path: string
@@ -19,6 +19,7 @@ interface FileListProps {
   targetDevice: Device
   onRemoveFile: (index: number) => void
   onAddMoreFiles: () => void
+  onAddMoreFolders?: () => void
   onCancel: () => void
   onSend: () => void
   theme?: 'dark' | 'light'
@@ -38,6 +39,7 @@ export const FileList: React.FC<FileListProps> = ({
   targetDevice,
   onRemoveFile,
   onAddMoreFiles,
+  onAddMoreFolders,
   onCancel,
   onSend,
   theme = 'dark'
@@ -132,23 +134,35 @@ export const FileList: React.FC<FileListProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex gap-3">
+        <div className="flex gap-2">
           <button
             onClick={onAddMoreFiles}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl border text-sm font-semibold transition-all duration-300 shadow-sm ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-3 rounded-2xl border text-xs font-semibold transition-all duration-300 shadow-sm ${
               isLight ? 'border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700' : 'border-white/20 bg-white/5 hover:bg-white/10 active:bg-white/15 text-white'
             }`}
           >
-            <Plus className="w-4 h-4" />
-            继续添加
+            <Plus className="w-3.5 h-3.5" />
+            添加文件
           </button>
           
+          {onAddMoreFolders && (
+            <button
+              onClick={onAddMoreFolders}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-3 rounded-2xl border text-xs font-semibold transition-all duration-300 shadow-sm ${
+                isLight ? 'border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700' : 'border-white/20 bg-white/5 hover:bg-white/10 active:bg-white/15 text-white'
+              }`}
+            >
+              <FolderPlus className="w-3.5 h-3.5" />
+              添加文件夹
+            </button>
+          )}
+
           <button
             onClick={onSend}
             disabled={files.length === 0}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 active:scale-95 text-white text-sm font-semibold border border-white/10 shadow-lg shadow-blue-500/25 transition-all duration-300 disabled:opacity-50 disabled:pointer-events-none"
+            className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 active:scale-95 text-white text-xs font-semibold border border-white/10 shadow-lg shadow-blue-500/25 transition-all duration-300 disabled:opacity-50 disabled:pointer-events-none"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-3.5 h-3.5" />
             开始发送
           </button>
         </div>

@@ -1,10 +1,11 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '16'
+import { app, BrowserWindow, ipcMain, dialog, powerSaveBlocker } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as net from 'net'
 import * as os from 'os'
 import Bonjour from 'bonjour-service'
-import { webServer } from './webServer'
+import { webServer, AdaptiveWriteSmoother } from './webServer'
 
 // Interface definitions
 interface Peer {
@@ -34,6 +35,20 @@ const activeOutgoings = new Map<string, { socket: net.Socket; readStream?: fs.Re
 
 const PORT = 12138 // Default TCP Transfer Port
 const MDNS_TYPE = 'trans-service'
+
+let powerSaveBlockerId: number | null = null
+
+function updatePowerSaveBlocker() {
+  const hasActive = activeIncomingTransfers.size > 0 || activeOutgoings.size > 0 || (webServer && webServer.hasActiveTransfers())
+  if (hasActive && powerSaveBlockerId === null) {
+    powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension')
+  } else if (!hasActive && powerSaveBlockerId !== null) {
+    if (powerSaveBlocker.isStarted(powerSaveBlockerId)) {
+      powerSaveBlocker.stop(powerSaveBlockerId)
+    }
+    powerSaveBlockerId = null
+  }
+}
 
 // Helper to get local IP
 function getLocalIp(): string {
@@ -92,7 +107,77 @@ function getLocalIp(): string {
   return candidateIps[0]
 }
 
-const myIp = getLocalIp()
+let myIp = getLocalIp()
+
+export function getAvailableFilePath(baseDir: string, relativePath: string): string {
+  const cleanPath = relativePath.replace(/\\/g, '/').replace(/^(\/|[a-zA-Z]:\/)+/, '')
+  const parts = cleanPath.split('/').filter(p => p && p !== '.' && p !== '..')
+  const fileName = parts.pop() || `file_${Date.now()}`
+  const subDirs = parts.join(path.sep)
+  const targetDir = subDirs ? path.join(baseDir, subDirs) : baseDir
+
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true })
+  }
+
+  const ext = path.extname(fileName)
+  const base = ext ? fileName.slice(0, -ext.length) : fileName
+  let candidate = path.join(targetDir, fileName)
+  let counter = 1
+
+  while (fs.existsSync(candidate)) {
+    candidate = path.join(targetDir, `${base} (${counter})${ext}`)
+    counter++
+  }
+  return candidate
+}
+
+function updateLocalIp(): boolean {
+  const latestIp = getLocalIp()
+  if (latestIp !== myIp) {
+    myIp = latestIp
+    if (bonjour) {
+      bonjour.unpublishAll(() => {
+        bonjour?.publish({
+          name: `${myNickname}-${myIp.replace(/\./g, '-')}`,
+          type: MDNS_TYPE,
+          port: PORT,
+          txt: {
+            nickname: myNickname,
+            avatarIndex: String(myAvatarIndex),
+            ip: myIp
+          }
+        })
+      })
+    }
+    return true
+  }
+  return false
+}
+
+function getAllFilesRecursive(dirPath: string, rootDir: string): TransferFile[] {
+  const result: TransferFile[] = []
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name)
+      if (entry.isDirectory()) {
+        result.push(...getAllFilesRecursive(fullPath, rootDir))
+      } else if (entry.isFile()) {
+        try {
+          const stat = fs.statSync(fullPath)
+          const relPath = path.relative(path.dirname(rootDir), fullPath)
+          result.push({
+            path: fullPath,
+            name: relPath.replace(/\\/g, '/'),
+            size: stat.size
+          })
+        } catch (e) {}
+      }
+    }
+  } catch (e) {}
+  return result
+}
 
 // Get configurations
 const configPath = path.join(app.getPath('userData'), 'config.json')
@@ -226,24 +311,58 @@ function startDiscovery() {
 }
 
 let scanInterval: NodeJS.Timeout | null = null
+let isSubnetScanning = false
 
 function startSubnetScan() {
   if (scanInterval) clearInterval(scanInterval)
   scanLocalNetwork()
-  scanInterval = setInterval(scanLocalNetwork, 6000)
+  scanInterval = setInterval(scanLocalNetwork, 20000)
 }
 
-function scanLocalNetwork() {
+async function scanLocalNetwork() {
+  if (isSubnetScanning) return
+  updateLocalIp()
   if (!myIp || myIp === '127.0.0.1') return
+  isSubnetScanning = true
+
   const subnet = myIp.substring(0, myIp.lastIndexOf('.'))
-  
+  const targets: string[] = []
   for (let i = 1; i <= 254; i++) {
     const ip = `${subnet}.${i}`
-    if (ip === myIp) continue
-    
+    if (ip !== myIp) targets.push(ip)
+  }
+
+  const CONCURRENCY = 8
+  let index = 0
+
+  const probeWorker = async () => {
+    while (index < targets.length) {
+      const ip = targets[index++]
+      await probeTargetIp(ip)
+    }
+  }
+
+  try {
+    const workers = Array.from({ length: CONCURRENCY }, () => probeWorker())
+    await Promise.all(workers)
+  } finally {
+    isSubnetScanning = false
+  }
+}
+
+function probeTargetIp(ip: string): Promise<void> {
+  return new Promise((resolve) => {
     const socket = new net.Socket()
-    socket.setTimeout(1200)
-    
+    socket.setTimeout(800)
+    let finished = false
+
+    const cleanup = () => {
+      if (finished) return
+      finished = true
+      socket.destroy()
+      resolve()
+    }
+
     socket.connect(PORT, ip, () => {
       const pingPayload = JSON.stringify({
         type: 'ping',
@@ -255,7 +374,7 @@ function scanLocalNetwork() {
       sizeBuf.writeInt32BE(Buffer.byteLength(pingPayload))
       socket.write(Buffer.concat([sizeBuf, Buffer.from(pingPayload, 'utf-8')]))
     })
-    
+
     socket.on('data', (data) => {
       try {
         const info = JSON.parse(data.toString('utf-8'))
@@ -274,17 +393,12 @@ function scanLocalNetwork() {
       } catch (e) {
         // ignore
       }
-      socket.destroy()
+      cleanup()
     })
-    
-    socket.on('error', () => {
-      socket.destroy()
-    })
-    
-    socket.on('timeout', () => {
-      socket.destroy()
-    })
-  }
+
+    socket.on('error', cleanup)
+    socket.on('timeout', cleanup)
+  })
 }
 
 function sendPeerList() {
@@ -312,6 +426,21 @@ function startTcpServer() {
     let lastIpcTime = 0
     let controlBuffer = Buffer.alloc(0)
     let isSocketEnded = false
+    let currentDestPath = ''
+    let currentPartPath = ''
+    const smoother = new AdaptiveWriteSmoother()
+
+    function cleanupIncompleteFile() {
+      if (fileStream) {
+        try { fileStream.destroy() } catch (e) {}
+        fileStream = null
+      }
+      if (currentPartPath && fs.existsSync(currentPartPath)) {
+        try { fs.unlinkSync(currentPartPath) } catch (e) {}
+        currentPartPath = ''
+        currentDestPath = ''
+      }
+    }
 
     function processChunk(chunk: Buffer) {
       if (isSocketEnded) return
@@ -349,10 +478,23 @@ function startTcpServer() {
               }
             }
 
-            if (!canWrite) {
+            const isBacklogged = smoother.shouldThrottle(fileStream, canWrite)
+            if (isBacklogged && !smoother.getIsThrottling()) {
+              smoother.setIsThrottling(true)
               socket.pause()
+              const pauseStart = Date.now()
               fileStream.once('drain', () => {
-                socket.resume()
+                const drainDuration = Date.now() - pauseStart
+                const smoothDelay = smoother.recordDrain(drainDuration)
+                if (smoothDelay > 0) {
+                  setTimeout(() => {
+                    smoother.setIsThrottling(false)
+                    if (!isSocketEnded) socket.resume()
+                  }, smoothDelay)
+                } else {
+                  smoother.setIsThrottling(false)
+                  if (!isSocketEnded) socket.resume()
+                }
               })
             }
           }
@@ -360,20 +502,38 @@ function startTcpServer() {
           if (bytesReceivedForCurrentFile >= currentFileExpectedSize) {
             const streamToClose = fileStream
             fileStream = null
-            streamToClose.end()
-
-            // Reply with per-file ACK
-            socket.write(JSON.stringify({ type: 'file-ack', fileIndex: currentFileIndex, success: true }) + '\n')
+            const finalDest = currentDestPath
+            const partFile = currentPartPath
+            currentDestPath = ''
+            currentPartPath = ''
+            smoother.reset()
+            const ackIndex = currentFileIndex
             currentFileIndex++
 
-            if (currentFileIndex >= filesMetadata.length) {
-              // All files in this task have completed
-              socket.write(JSON.stringify({ status: 'complete' }) + '\n')
-              isSocketEnded = true
-              socket.destroy()
-              activeIncomingTransfers.delete(transferId)
-              return
-            }
+            // Pause socket while waiting for fileStream to completely commit to disk
+            socket.pause()
+            streamToClose.end(() => {
+              if (isSocketEnded) return
+              try {
+                if (partFile && fs.existsSync(partFile)) {
+                  fs.renameSync(partFile, finalDest)
+                }
+              } catch (err) {
+                console.error('Failed to rename .part file to final destination:', err)
+              }
+              socket.write(JSON.stringify({ type: 'file-ack', fileIndex: ackIndex, success: true }) + '\n')
+              if (currentFileIndex >= filesMetadata.length) {
+                // All files in this task have completed
+                socket.write(JSON.stringify({ status: 'complete' }) + '\n')
+                isSocketEnded = true
+                socket.destroy()
+                activeIncomingTransfers.delete(transferId)
+                updatePowerSaveBlocker()
+              } else {
+                socket.resume()
+              }
+            })
+            return
           }
         } else {
           // Accumulate into controlBuffer to parse headers
@@ -479,8 +639,10 @@ function startTcpServer() {
                         totalSize: incoming.totalSize
                       })
                     }
+                    cleanupIncompleteFile()
                     incoming.socket.destroy()
                     activeIncomingTransfers.delete(ctrlId)
+                    updatePowerSaveBlocker()
                   }
                 } else {
                   const outgoing = activeOutgoings.get(ctrlId)
@@ -533,6 +695,7 @@ function startTcpServer() {
                 totalBytesReceived: 0,
                 totalSize
               })
+              updatePowerSaveBlocker()
 
               if (mainWindow) {
                 mainWindow.webContents.send('incoming-transfer', {
@@ -559,15 +722,9 @@ function startTcpServer() {
               currentFileExpectedSize = fileHeader.size ?? 0
               bytesReceivedForCurrentFile = 0
 
-              const normalizedPath = relativePath.replace(/\\/g, '/')
-              const safeName = path.basename(normalizedPath)
-              const destPath = path.join(saveDir, safeName)
-              const destDir = path.dirname(destPath)
-              if (!fs.existsSync(destDir)) {
-                fs.mkdirSync(destDir, { recursive: true })
-              }
-
-              fileStream = fs.createWriteStream(destPath, { highWaterMark: 512 * 1024 })
+              currentDestPath = getAvailableFilePath(saveDir, relativePath)
+              currentPartPath = currentDestPath + '.part'
+              fileStream = fs.createWriteStream(currentPartPath, { highWaterMark: 1024 * 1024 })
 
               if (currentFileExpectedSize === 0) {
                 fileStream.end()
@@ -582,8 +739,10 @@ function startTcpServer() {
                   activeIncomingTransfers.delete(transferId)
                   return
                 }
-              } else if (controlBuffer.length > 0) {
-                // Critical zero-loss fix: remaining bytes in controlBuffer belong to current file payload
+              }
+
+              if (controlBuffer.length > 0) {
+                // Drain remaining bytes in controlBuffer for file payload or next header
                 const remaining = controlBuffer
                 controlBuffer = Buffer.alloc(0)
                 processChunk(remaining)
@@ -611,14 +770,16 @@ function startTcpServer() {
     socket.on('error', (err) => {
       console.error('Receiver Socket error:', err)
       isSocketEnded = true
-      if (fileStream) fileStream.end()
+      cleanupIncompleteFile()
       if (transferId) activeIncomingTransfers.delete(transferId)
+      updatePowerSaveBlocker()
     })
 
     socket.on('close', () => {
       isSocketEnded = true
-      if (fileStream) fileStream.end()
+      cleanupIncompleteFile()
       if (transferId) activeIncomingTransfers.delete(transferId)
+      updatePowerSaveBlocker()
     })
   })
 
@@ -696,6 +857,7 @@ function initWebServer() {
   })
 
   webServer.on('mobile-upload-start', (data) => {
+    updatePowerSaveBlocker()
     if (mainWindow) {
       mainWindow.webContents.send('incoming-transfer', {
         id: data.id,
@@ -719,6 +881,7 @@ function initWebServer() {
   })
 
   webServer.on('mobile-upload-complete', (data) => {
+    updatePowerSaveBlocker()
     if (mainWindow) {
       mainWindow.webContents.send('transfer-progress', {
         id: data.id,
@@ -730,11 +893,26 @@ function initWebServer() {
     }
   })
 
+  webServer.on('mobile-upload-error', () => {
+    updatePowerSaveBlocker()
+  })
+
   webServer.start(12139).catch(err => console.error('Failed to start webServer:', err))
 }
 
-// App lifecycle
-app.whenReady().then(() => {
+// App lifecycle & Single Instance Lock
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+
+  app.whenReady().then(() => {
   try {
     os.setPriority(os.constants.priority.PRIORITY_HIGH)
   } catch (e) {
@@ -759,6 +937,7 @@ app.on('window-all-closed', () => {
   }
   if (process.platform !== 'darwin') app.quit()
 })
+}
 
 // IPC Handlers
 ipcMain.handle('select-files', async () => {
@@ -778,8 +957,22 @@ ipcMain.handle('select-files', async () => {
   })
 })
 
+ipcMain.handle('select-directory-to-send', async () => {
+  if (!mainWindow) return []
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: '选择要发送的文件夹'
+  })
+  if (result.canceled || result.filePaths.length === 0) return []
+  const dirPath = result.filePaths[0]
+  return getAllFilesRecursive(dirPath, dirPath)
+})
+
 ipcMain.handle('get-my-nickname', () => myNickname)
-ipcMain.handle('get-my-ip', () => myIp)
+ipcMain.handle('get-my-ip', () => {
+  updateLocalIp()
+  return myIp
+})
 ipcMain.handle('get-my-avatar-index', () => myAvatarIndex)
 ipcMain.handle('set-my-avatar-index', (_event, idx) => {
   myAvatarIndex = Number(idx)
@@ -997,6 +1190,7 @@ ipcMain.handle('send-files', async (_event, { targetIp, files, transferId }: { t
     let totalBytesSent = 0
 
     activeOutgoings.set(transferId, { socket, isPaused: false, targetIp })
+    updatePowerSaveBlocker()
 
     let resolved = false
     let currentFileAckResolver: (() => void) | null = null
@@ -1007,11 +1201,13 @@ ipcMain.handle('send-files', async (_event, { targetIp, files, transferId }: { t
       resolved = true
       currentFileAckResolver = null
       activeOutgoings.delete(transferId)
+      updatePowerSaveBlocker()
       resolve(val)
     }
 
     socket.connect(PORT, targetIp, () => {
       socket.setNoDelay(true)
+      socket.setKeepAlive(true, 1000)
       // 1. Send Handshake metadata JSON
       const handshake = JSON.stringify({
         id: transferId,
@@ -1100,11 +1296,22 @@ ipcMain.handle('send-files', async (_event, { targetIp, files, transferId }: { t
 
         // Handle 0-byte file edge case
         if (file.size === 0) {
+          if (mainWindow) {
+            mainWindow.webContents.send('transfer-progress', {
+              id: transferId,
+              direction: 'outgoing',
+              progress: totalSize > 0 ? totalBytesSent / totalSize : 1,
+              speed: 0,
+              bytesTransferred: totalBytesSent,
+              totalSize
+            })
+          }
+          cleanupAndResolve()
           return
         }
 
-        // 2. Stream file data with 512KB chunk buffer for optimal TCP pipeline throughput
-        const readStream = fs.createReadStream(file.path, { highWaterMark: 512 * 1024 })
+        // 2. Stream file data with 1MB chunk buffer for optimal TCP pipeline throughput
+        const readStream = fs.createReadStream(file.path, { highWaterMark: 1024 * 1024 })
         
         const entry = activeOutgoings.get(transferId)
         if (entry) {
@@ -1144,7 +1351,8 @@ ipcMain.handle('send-files', async (_event, { targetIp, files, transferId }: { t
         })
 
         readStream.on('end', () => {
-          // Stream read finished. Waiting for receiver's file-ack to invoke currentFileAckResolver.
+          // Continuous pipeline streaming: Immediately proceed to next file without RTT stall
+          cleanupAndResolve()
         })
 
         readStream.on('error', (err) => {
@@ -1284,20 +1492,23 @@ ipcMain.handle('cancel-transfer', (_event, id) => {
 })
 
 ipcMain.handle('get-web-server-status', () => {
+  updateLocalIp()
   return {
     isRunning: webServer.getIsRunning(),
     port: webServer.getPort(),
-    url: `http://${myIp}:${webServer.getPort()}`
+    url: `http://${myIp}:${webServer.getPort()}`,
+    pin: webServer.getPin()
   }
 })
 
 ipcMain.handle('toggle-web-server', async (_event, enable: boolean) => {
+  updateLocalIp()
   if (enable) {
     const port = await webServer.start()
-    return { isRunning: true, port, url: `http://${myIp}:${port}` }
+    return { isRunning: true, port, url: `http://${myIp}:${port}`, pin: webServer.getPin() }
   } else {
     webServer.stop()
-    return { isRunning: false, port: webServer.getPort(), url: '' }
+    return { isRunning: false, port: webServer.getPort(), url: '', pin: '' }
   }
 })
 
@@ -1316,7 +1527,7 @@ ipcMain.handle('share-file-to-web', async (_event, filePath: string) => {
   return true
 })
 
-// Window control handlers (Minimize, Maximize, Close)
+// Window control handlers (Minimize, Maximize, Close, Force Close)
 ipcMain.on('window-min', () => {
   mainWindow?.minimize()
 })
@@ -1328,5 +1539,15 @@ ipcMain.on('window-max', () => {
   }
 })
 ipcMain.on('window-close', () => {
-  mainWindow?.close()
+  const hasActive = activeIncomingTransfers.size > 0 || activeOutgoings.size > 0 || (webServer && webServer.hasActiveTransfers())
+  if (hasActive) {
+    if (mainWindow) {
+      mainWindow.webContents.send('confirm-app-close')
+    }
+  } else {
+    mainWindow?.close()
+  }
+})
+ipcMain.on('window-force-close', () => {
+  mainWindow?.destroy()
 })

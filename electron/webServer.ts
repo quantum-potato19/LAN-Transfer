@@ -19,6 +19,50 @@ interface SseClient {
   ip: string
 }
 
+export class AdaptiveWriteSmoother {
+  private drainHistory: number[] = []
+  private avgDrainMs = 0
+  private isThrottling = false
+
+  public recordDrain(durationMs: number): number {
+    this.drainHistory.push(durationMs)
+    if (this.drainHistory.length > 8) {
+      this.drainHistory.shift()
+    }
+    this.avgDrainMs = this.drainHistory.reduce((a, b) => a + b, 0) / this.drainHistory.length
+
+    // HDD write rate smoothing:
+    // If average drain duration > 35ms (HDD mechanical seek / OS page cache congestion),
+    // calculate a dynamic pacing micro-delay to let the physical drive settle without locking the I/O bus.
+    if (this.avgDrainMs > 35) {
+      return Math.min(45, Math.max(5, Math.floor(this.avgDrainMs * 0.35)))
+    }
+    return 0
+  }
+
+  public shouldThrottle(stream: fs.WriteStream, canWrite: boolean): boolean {
+    if (this.isThrottling) return false
+    // Tighten buffer threshold to 1.5MB when disk is struggling (avgDrainMs > 50ms)
+    // Otherwise allow 3MB buffer on fast NVMe SSDs
+    const threshold = this.avgDrainMs > 50 ? 1.5 * 1024 * 1024 : 3 * 1024 * 1024
+    return !canWrite || stream.writableLength > threshold
+  }
+
+  public getIsThrottling(): boolean {
+    return this.isThrottling
+  }
+
+  public setIsThrottling(val: boolean) {
+    this.isThrottling = val
+  }
+
+  public reset() {
+    this.drainHistory = []
+    this.avgDrainMs = 0
+    this.isThrottling = false
+  }
+}
+
 interface ActiveMobileUpload {
   id: string
   req: http.IncomingMessage
@@ -27,10 +71,34 @@ interface ActiveMobileUpload {
   destPath: string
 }
 
+function getAvailableFilePath(baseDir: string, relativePath: string): string {
+  const cleanPath = relativePath.replace(/\\/g, '/').replace(/^(\/|[a-zA-Z]:\/)+/, '')
+  const parts = cleanPath.split('/').filter(p => p && p !== '.' && p !== '..')
+  const fileName = parts.pop() || `file_${Date.now()}`
+  const subDirs = parts.join(path.sep)
+  const targetDir = subDirs ? path.join(baseDir, subDirs) : baseDir
+
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true })
+  }
+
+  const ext = path.extname(fileName)
+  const base = ext ? fileName.slice(0, -ext.length) : fileName
+  let candidate = path.join(targetDir, fileName)
+  let counter = 1
+
+  while (fs.existsSync(candidate)) {
+    candidate = path.join(targetDir, `${base} (${counter})${ext}`)
+    counter++
+  }
+  return candidate
+}
+
 class WebServerManager extends EventEmitter {
   private server: http.Server | null = null
   private port = 12139
   private isRunning = false
+  private currentPin = ''
   private sseClients: Set<SseClient> = new Set()
   private activeUploads = new Map<string, ActiveMobileUpload>()
   private pendingDownloads = new Map<string, WebFileItem>()
@@ -53,6 +121,10 @@ class WebServerManager extends EventEmitter {
   })
   private getPeersCallback: () => any[] = () => []
 
+  public getPin(): string {
+    return this.currentPin
+  }
+
   public setCallbacks(
     infoCb: () => { nickname: string; ip: string; avatarIndex: number },
     peersCb: () => any[],
@@ -69,6 +141,9 @@ class WebServerManager extends EventEmitter {
 
   public start(port = 12139): Promise<number> {
     this.port = port
+    if (!this.currentPin) {
+      this.currentPin = Math.floor(1000 + Math.random() * 9000).toString()
+    }
     return new Promise((resolve, reject) => {
       if (this.isRunning && this.server) {
         return resolve(this.port)
@@ -78,7 +153,7 @@ class WebServerManager extends EventEmitter {
         // Enable CORS
         res.setHeader('Access-Control-Allow-Origin', '*')
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-File-Name, X-Target-Ip, X-Sender-Name, X-File-Size')
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-File-Name, X-Target-Ip, X-Sender-Name, X-File-Size, X-Share-Pin')
 
         if (req.method === 'OPTIONS') {
           res.writeHead(204)
@@ -87,6 +162,21 @@ class WebServerManager extends EventEmitter {
         }
 
         const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
+
+        // 0. Serve HTML Web UI (Public landing)
+        if (url.pathname === '/' || url.pathname === '/index.html') {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+          res.end(this.getMobileHtmlPage())
+          return
+        }
+
+        // Security: PIN Authentication check for all internal API operations
+        const providedPin = (req.headers['x-share-pin'] as string) || url.searchParams.get('pin') || ''
+        if (this.currentPin && providedPin !== this.currentPin) {
+          res.writeHead(401, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ success: false, error: 'Unauthorized: 请输入正确的配对码' }))
+          return
+        }
 
         // 1. SSE Events Endpoint
         if (url.pathname === '/api/events') {
@@ -408,16 +498,10 @@ class WebServerManager extends EventEmitter {
     const targetIp = (req.headers['x-target-ip'] as string) || ''
     const fileSize = parseInt((req.headers['x-file-size'] as string) || '0', 10)
 
-    // Security: sanitize path basename
-    const safeName = path.basename(fileName.replace(/\\/g, '/'))
     const currentSaveDir = this.saveDir || path.join(os.homedir(), 'Downloads')
-    
-    if (!fs.existsSync(currentSaveDir)) {
-      fs.mkdirSync(currentSaveDir, { recursive: true })
-    }
-
-    const destPath = path.join(currentSaveDir, safeName)
-    const writeStream = fs.createWriteStream(destPath, { highWaterMark: 512 * 1024 })
+    const destPath = getAvailableFilePath(currentSaveDir, fileName)
+    const safeName = path.basename(destPath)
+    const writeStream = fs.createWriteStream(destPath, { highWaterMark: 1024 * 1024 })
     req.socket?.setNoDelay(true)
 
     let received = 0
@@ -444,13 +528,28 @@ class WebServerManager extends EventEmitter {
       })
     }
 
+    const smoother = new AdaptiveWriteSmoother()
+
     req.on('data', (chunk) => {
       received += chunk.length
       const canWrite = writeStream.write(chunk)
-      if (!canWrite) {
+      const isBacklogged = smoother.shouldThrottle(writeStream, canWrite)
+      if (isBacklogged && !smoother.getIsThrottling()) {
+        smoother.setIsThrottling(true)
         req.pause()
+        const pauseStart = Date.now()
         writeStream.once('drain', () => {
-          req.resume()
+          const drainDuration = Date.now() - pauseStart
+          const smoothDelay = smoother.recordDrain(drainDuration)
+          if (smoothDelay > 0) {
+            setTimeout(() => {
+              smoother.setIsThrottling(false)
+              req.resume()
+            }, smoothDelay)
+          } else {
+            smoother.setIsThrottling(false)
+            req.resume()
+          }
         })
       }
 
@@ -472,38 +571,42 @@ class WebServerManager extends EventEmitter {
 
     req.on('end', () => {
       this.activeUploads.delete(transferId)
-      writeStream.end()
-      
-      if (isTargetingDesktop) {
-        this.emit('mobile-upload-complete', {
-          id: transferId,
-          senderName,
-          fileName: safeName,
-          path: destPath,
-          totalSize: received
-        })
-      } else {
-        // Mobile-to-Mobile transfer relay: Register for target mobile client
-        const fileId = `web-${Date.now()}-${Math.floor(Math.random() * 1000)}`
-        this.addPendingDownload({
-          id: fileId,
-          name: safeName,
-          size: received,
-          path: destPath,
-          senderName: senderName,
-          targetIp: targetIp,
-          time: Date.now()
-        })
-      }
+      smoother.reset()
+      writeStream.end(() => {
+        if (isTargetingDesktop) {
+          this.emit('mobile-upload-complete', {
+            id: transferId,
+            senderName,
+            fileName: safeName,
+            path: destPath,
+            totalSize: received
+          })
+        } else {
+          // Mobile-to-Mobile transfer relay: Register for target mobile client
+          const fileId = `web-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+          this.addPendingDownload({
+            id: fileId,
+            name: safeName,
+            size: received,
+            path: destPath,
+            senderName: senderName,
+            targetIp: targetIp,
+            time: Date.now()
+          })
+        }
 
-      res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ success: true, message: 'File uploaded successfully' }))
+        if (!res.headersSent) {
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ success: true, message: 'File uploaded successfully' }))
+        }
+      })
     })
 
     req.on('error', (err) => {
       this.activeUploads.delete(transferId)
       console.error('Mobile upload error:', err)
       try { writeStream.destroy() } catch (e) {}
+      try { if (fs.existsSync(destPath) && received < fileSize) fs.unlinkSync(destPath) } catch (e) {}
       this.emit('mobile-upload-error', { id: transferId, error: err.message })
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'application/json' })
@@ -515,6 +618,7 @@ class WebServerManager extends EventEmitter {
       if (this.activeUploads.has(transferId)) {
         this.activeUploads.delete(transferId)
         try { writeStream.destroy() } catch (e) {}
+        try { if (fs.existsSync(destPath) && received < fileSize) fs.unlinkSync(destPath) } catch (e) {}
       }
     })
   }
@@ -573,7 +677,7 @@ class WebServerManager extends EventEmitter {
       'Cache-Control': 'no-transform'
     })
 
-    const readStream = fs.createReadStream(fileItem.path, { highWaterMark: 512 * 1024 })
+    const readStream = fs.createReadStream(fileItem.path, { highWaterMark: 1024 * 1024 })
     readStream.pipe(res)
   }
 
@@ -583,6 +687,10 @@ class WebServerManager extends EventEmitter {
 
   public getIsRunning(): boolean {
     return this.isRunning
+  }
+
+  public hasActiveTransfers(): boolean {
+    return this.activeUploads.size > 0 || this.activeSpeedTestSessions.size > 0
   }
 
   private getMobileHtmlPage(): string {
@@ -678,8 +786,110 @@ class WebServerManager extends EventEmitter {
   </div>
 
   <div class="tip">💡 提示：点击上方的在线设备即可选择文件即时发送</div>
+  <video id="wakeLockVideoFallback" loop playsinline webkit-playsinline muted style="position:fixed;width:1px;height:1px;top:-20px;left:-20px;opacity:0.001;pointer-events:none;"></video>
+  <audio id="wakeLockAudioFallback" loop style="position:fixed;width:1px;height:1px;top:-20px;left:-20px;opacity:0.001;pointer-events:none;"></audio>
 
   <script>
+    // Screen Wake Lock & Micro-Media Loop Fallback for older/low-end mobile browsers
+    var wakeLockSentinel = null;
+    var keepAliveAudio = null;
+    var keepAliveVideo = null;
+    var isMediaFallbackActive = false;
+
+    function initKeepAliveElements() {
+      if (!keepAliveVideo) {
+        keepAliveVideo = document.getElementById('wakeLockVideoFallback');
+      }
+      try {
+        if (keepAliveVideo && !keepAliveVideo.srcObject && !keepAliveVideo.src) {
+          var canvas = document.createElement('canvas');
+          canvas.width = 2;
+          canvas.height = 2;
+          var ctx = canvas.getContext('2d');
+          if (ctx && typeof canvas.captureStream === 'function') {
+            var toggle = false;
+            setInterval(function() {
+              toggle = !toggle;
+              ctx.fillStyle = toggle ? '#000000' : '#020202';
+              ctx.fillRect(0, 0, 2, 2);
+            }, 1000);
+            keepAliveVideo.srcObject = canvas.captureStream(1);
+          }
+        }
+      } catch (e) {}
+
+      if (!keepAliveAudio) {
+        keepAliveAudio = document.getElementById('wakeLockAudioFallback');
+        if (keepAliveAudio && !keepAliveAudio.src) {
+          keepAliveAudio.src = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABmYWN0BAAAAAAAAABkYXRhAAAAAA==';
+        }
+      }
+    }
+
+    function activateMediaFallback() {
+      initKeepAliveElements();
+      isMediaFallbackActive = true;
+      if (keepAliveVideo && keepAliveVideo.paused) {
+        keepAliveVideo.play().catch(function() {});
+      }
+      if (keepAliveAudio && keepAliveAudio.paused) {
+        keepAliveAudio.play().catch(function() {});
+      }
+    }
+
+    async function ensureScreenAwake() {
+      initKeepAliveElements();
+      if ('wakeLock' in navigator && navigator.wakeLock) {
+        try {
+          if (!wakeLockSentinel) {
+            wakeLockSentinel = await navigator.wakeLock.request('screen');
+            wakeLockSentinel.addEventListener('release', function() {
+              wakeLockSentinel = null;
+            });
+            return;
+          }
+        } catch (err) {
+          activateMediaFallback();
+        }
+      } else {
+        activateMediaFallback();
+      }
+    }
+
+    ['touchstart', 'click', 'keydown'].forEach(function(evt) {
+      window.addEventListener(evt, function() {
+        ensureScreenAwake();
+        if (isMediaFallbackActive && keepAliveAudio && keepAliveAudio.paused) {
+          keepAliveAudio.play().catch(function() {});
+        }
+      }, { passive: true });
+    });
+
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') {
+        ensureScreenAwake();
+      }
+    });
+
+    ensureScreenAwake();
+
+    window.addEventListener('beforeunload', function(e) {
+      if (activeXhr || (uploadFileQueue && uploadFileQueue.length > 0)) {
+        e.preventDefault();
+        e.returnValue = '文件正在传输中，离开页面将中断传输！';
+        return e.returnValue;
+      }
+    });
+
+    const urlParams = new URLSearchParams(window.location.search);
+    let currentPin = urlParams.get('pin') || sessionStorage.getItem('mobile_pin') || '';
+    if (!currentPin) {
+      currentPin = prompt('请输入电脑端显示的 4 位连接配对码：') || '';
+    }
+    if (currentPin) {
+      sessionStorage.setItem('mobile_pin', currentPin);
+    }
+
     let myNickname = localStorage.getItem('mobile_nickname') || ('手机_' + Math.floor(Math.random() * 899 + 100));
     document.getElementById('nicknameInput').value = myNickname;
 
@@ -691,7 +901,7 @@ class WebServerManager extends EventEmitter {
     let activeXhr = null;
     let uploadFileQueue = [];
 
-    const evtSource = new EventSource('/api/events');
+    const evtSource = new EventSource('/api/events?pin=' + encodeURIComponent(currentPin));
     const statusBadge = document.getElementById('connectionStatus');
     const deviceListEl = document.getElementById('deviceList');
     const downloadListEl = document.getElementById('downloadList');
@@ -733,7 +943,7 @@ class WebServerManager extends EventEmitter {
           statusBadge.style.color = '#38bdf8';
           statusBadge.style.borderColor = 'rgba(56, 189, 248, 0.4)';
           
-          fetch('/api/speedtest?session=' + encodeURIComponent(data.sessionId), { cache: 'no-store' })
+          fetch('/api/speedtest?session=' + encodeURIComponent(data.sessionId) + '&pin=' + encodeURIComponent(currentPin), { cache: 'no-store' })
             .then(res => {
               const reader = res.body.getReader();
               function readChunk() {
@@ -777,9 +987,9 @@ class WebServerManager extends EventEmitter {
       myNickname = val;
       localStorage.setItem('mobile_nickname', myNickname);
 
-      fetch('/api/nickname', {
+      fetch('/api/nickname?pin=' + encodeURIComponent(currentPin), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Share-Pin': currentPin },
         body: JSON.stringify({ nickname: myNickname })
       }).then(() => {
         if (!silent) alert('名称已保存并同步给电脑！');
@@ -861,7 +1071,7 @@ class WebServerManager extends EventEmitter {
             <div class="item-name">\${escapeHtml(item.name)}</div>
             <div class="item-meta">\${formatSize(item.size)} · 来自 \${escapeHtml(item.senderName || '电脑')}</div>
           </div>
-          <a class="download-btn" href="/api/download/\${item.id}" download="\${escapeHtml(item.name)}">下载</a>
+          <a class="download-btn" href="/api/download/\${item.id}?pin=\${encodeURIComponent(currentPin)}" download="\${escapeHtml(item.name)}">下载</a>
         \`;
         downloadListEl.appendChild(row);
       });
@@ -869,6 +1079,7 @@ class WebServerManager extends EventEmitter {
 
     function uploadFiles(files) {
       if (!files || files.length === 0) return;
+      ensureScreenAwake();
       const progressCard = document.getElementById('uploadProgressCard');
       const fileNameEl = document.getElementById('uploadFileName');
       const percentEl = document.getElementById('uploadPercent');
@@ -898,6 +1109,7 @@ class WebServerManager extends EventEmitter {
         xhr.setRequestHeader('X-Sender-Name', encodeURIComponent(myNickname));
         xhr.setRequestHeader('X-Target-Ip', targetDeviceIp);
         xhr.setRequestHeader('X-File-Size', file.size.toString());
+        xhr.setRequestHeader('X-Share-Pin', currentPin);
 
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
@@ -916,6 +1128,10 @@ class WebServerManager extends EventEmitter {
             fileNameEl.textContent = '❌ 对方已中止传输';
             setTimeout(() => { progressCard.style.display = 'none'; }, 2000);
             alert('对方（电脑端）已中止本次文件传输');
+          } else if (xhr.status === 401) {
+            sessionStorage.removeItem('mobile_pin');
+            alert('配对授权码失效，请重新输入配对码');
+            location.reload();
           } else {
             alert('上传失败: ' + file.name);
             progressCard.style.display = 'none';
@@ -954,7 +1170,11 @@ class WebServerManager extends EventEmitter {
       const data = new Blob([new Uint8Array(dataSize)]);
       const startTime = Date.now();
       try {
-        await fetch('/api/speedtest', { method: 'POST', body: data });
+        await fetch('/api/speedtest?pin=' + encodeURIComponent(currentPin), { 
+          method: 'POST', 
+          headers: { 'X-Share-Pin': currentPin },
+          body: data 
+        });
         const duration = (Date.now() - startTime) / 1000 || 0.1;
         const speed = (dataSize / 1024 / 1024) / duration;
         el.innerHTML = '📤 上传速度：<strong>' + speed.toFixed(1) + ' MB/s</strong> (约 ' + (speed * 8).toFixed(0) + ' Mbps)';
@@ -970,7 +1190,9 @@ class WebServerManager extends EventEmitter {
       const startTime = Date.now();
       let loaded = 0;
       try {
-        const res = await fetch('/api/speedtest');
+        const res = await fetch('/api/speedtest?pin=' + encodeURIComponent(currentPin), {
+          headers: { 'X-Share-Pin': currentPin }
+        });
         const reader = res.body.getReader();
         while (true) {
           const { done, value } = await reader.read();

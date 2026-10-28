@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   selectFiles: () => ipcRenderer.invoke('select-files'),
+  selectDirectoryToSend: () => ipcRenderer.invoke('select-directory-to-send'),
   sendFiles: (targetIp: string, files: { path: string; name: string; size: number }[], transferId: string) => 
     ipcRenderer.invoke('send-files', { targetIp, files, transferId }),
   acceptTransfer: (id: string, accept: boolean) => 
@@ -14,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimizeWindow: () => ipcRenderer.send('window-min'),
   maximizeWindow: () => ipcRenderer.send('window-max'),
   closeWindow: () => ipcRenderer.send('window-close'),
+  forceCloseWindow: () => ipcRenderer.send('window-force-close'),
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
   getSaveDir: () => ipcRenderer.invoke('get-save-dir'),
   setSaveDir: (dir: string) => ipcRenderer.invoke('set-save-dir', dir),
@@ -44,6 +46,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('incoming-transfer', subscription)
     return () => {
       ipcRenderer.off('incoming-transfer', subscription)
+    }
+  },
+  onConfirmAppClose: (callback: () => void) => {
+    const subscription = () => callback()
+    ipcRenderer.on('confirm-app-close', subscription)
+    return () => {
+      ipcRenderer.off('confirm-app-close', subscription)
     }
   }
 })
