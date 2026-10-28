@@ -1,104 +1,176 @@
-# 🚀 LAN Transfer - 极速局域网文件传输工具
+# 🚀 LAN Transfer — Ultra-Fast Local File Transfer
 
-![GitHub release](https://img.shields.io/badge/Release-v1.2.0-blue.svg)
-![Platform](https://img.shields.io/badge/Platform-Windows-orange.svg)
-![License](https://img.shields.io/badge/License-MIT-green.svg)
+<p align="center">
+  <a href="#-lan-transfer---ultra-fast-local-file-transfer">English</a> •
+  <a href="#-lan-transfer---极速局域网文件传输工具-中文说明">简体中文</a>
+</p>
 
-[![Download Windows EXE](https://img.shields.io/badge/Download-Windows_EXE-blue?style=for-the-badge&logo=windows&logoColor=white)](releases/LAN%20Transfer_Setup_1.2.0.exe)
+<p align="center">
+  <img src="https://img.shields.io/badge/Release-v1.2.0-blue.svg" alt="Release" />
+  <img src="https://img.shields.io/badge/Platform-Windows-orange.svg" alt="Platform" />
+  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" />
+</p>
 
-**LAN Transfer** 是一款基于 Electron + React + TypeScript + Vite + Tailwind CSS 构建的高颜值局域网文件传输工具。不仅支持 PC 客户端间 P2P 文件互传，还支持**手机免安装 APP 扫码一键互传**，在局域网内实现零配置、多端全平台文件传输体验。
+<p align="center">
+  <a href="releases/LAN%20Transfer_Setup_1.2.0.exe">
+    <img src="https://img.shields.io/badge/Download-Windows_EXE-blue?style=for-the-badge&logo=windows&logoColor=white" alt="Download Windows EXE" />
+  </a>
+</p>
 
----
-
-## 界面预览
-
-|               ☀️ 白天模式               |              🌙 黑夜模式               |
-| :-------------------------------------: | :------------------------------------: |
-| ![白天模式](docs/images/main_light.png) | ![黑夜模式](docs/images/main_dark.png) |
-
----
-
-## 核心特性
-
-- **🚀 零磁盘 IO 局域网通道纯网络测速 (v1.2.0 新增)**：支持一键对 PC 或手机进行物理带宽网速测试，采用内存复用 Buffer 不写磁盘，精细显示实时 Mbps 滚牌与网络瓶颈诊断提示。
-- **📱 手机免安装 APP 扫码互传**：开启网页共享服务，手机连接同一 WiFi 扫描二维码即可在浏览器中与 PC 或其它设备互发文件，完美适配 iOS Safari 与 Android Chrome。
-- **⚡ 极速 P2P 传输与 4MB 写缓冲**：局域网内点对点直接建立 TCP 高速通道，内部扩展 4MB 内存写缓冲与背压控制，大幅降低磁盘寻道阻塞。
-- **🔍 动态设备感知与雷达图**：集成 mDNS 组播广播与局域网段 TCP 轮询，打开软件即刻自动扫描显示周围所有在线电脑与手机，支持显示局域网 IP 与一键点击发送。
-- **🔒 目标设备隐私隔离防护**：针对多设备并发情况实现精准的目标 IP 隔离传输，被测速设备保持绝对静默，防止接收文件误发或泄漏；包含防目录穿越安全策略。
-- **🎨 灵动岛状态与多主题交互**：基于 iOS 灵动岛风格的状态监控，支持实时速率/剩余时间计算、白天与黑夜高对比度主题自由切换。
+**LAN Transfer** is a modern, high-performance local area network file-sharing desktop application built with **Electron 30, React 18, TypeScript, Vite, and Tailwind CSS**. Engineered for multi-gigabit wire speeds, it enables peer-to-peer sharing across PC clients and allows **mobile devices to send and receive files instantly via standard web browsers by scanning a QR code**—no mobile app installation required.
 
 ---
 
-## 下载与安装
+## Interface Preview
 
-### 📥 快速下载
-
-您可以选择以下方式下载 Windows 客户端安装包：
-
-- [**`LAN Transfer_Setup_1.2.0.exe` (最新稳定版)**](releases/LAN%20Transfer_Setup_1.2.0.exe)
-- [查看所有历史发行版本 (Releases 页面)](../../releases)
-
-### 💿 安装步骤
-
-1. 点击上述链接下载最新的安装包 [**`LAN Transfer_Setup_1.2.0.exe`**](releases/LAN%20Transfer_Setup_1.2.0.exe)。
-2. 双击运行，在安装向导中您可以选择安装到任意自定义路径（如 `D:\Program Files\LAN Transfer`）。
-3. 安装完成后，双击桌面生成的 **`LAN Transfer`** 快捷方式即可开启使用。
-4. 如需与手机互传，点击侧边栏 **“手机扫码互传”**，使用手机扫码即可使用。
+| ☀️ Light Mode | 🌙 Dark Mode |
+| :---: | :---: |
+| ![Light Mode](docs/images/main_light.png) | ![Dark Mode](docs/images/main_dark.png) |
 
 ---
 
-## 使用指南
+## Key Features & Architecture
 
-### 1. 发现设备与雷达交互
-打开软件后，雷达面板会自动扫描并展示局域网内所有在线的 PC 与手机设备（带有设备类型标识与局域网 IP 地址）。
+### ⚡ 1. Saturated Bandwidth & Industrial Reliability
+- **Raw TCP Socket Streaming**: Direct point-to-point TCP socket architecture with custom streaming serialization, bypassing HTTP chunk overhead and saturating Gigabit / 2.5G / Wi-Fi 6 bandwidth (up to 120MB/s+).
+- **Adaptive HDD Write Rate-Smoothing**: Intelligent I/O backpressure queue regulates disk write frequency when receiving massive 20GB+ files on mechanical drives (HDD), preventing OS dirty-page cache saturation and UI freezes.
+- **In-Flight `.part` Isolation & Atomic Commit**: Active transfers stream directly into temporary `.part` files. Upon 100% completion and length verification, files are atomically renamed to destination paths. Incomplete or aborted files are instantly purged to prevent disk clutter.
+- **Single Instance & Port Guard**: Implements `app.requestSingleInstanceLock()` to guarantee exclusive ownership of communication ports `12138` and `12139`, seamlessly focusing the existing window if a duplicate instance is launched.
+- **Active Transfer Exit Protection**: Intercepts accidental window closure during active transfers, prompting a double-confirmation modal to protect in-flight data.
 
-### 2. 发送文件
-- **PC -> PC / 手机**：直接在雷达图或设备列表上点击目标设备（如“iPhone 15 [192.168.1.102]”），在弹出的文件框中挑选文件即可即时发送。
-- **IP 直连**：如果在极特殊网络环境下未能看到设备，可在软件底部手动输入对方局域网 IP（如 `192.168.0.106`），点击“直接连接”发起传输。
+### 📱 2. Zero-Install Mobile Web Sharing
+- **Browser-Based Quick Share**: Built-in zero-dependency HTTP & WebSocket server. Mobile devices on the same Wi-Fi scan an on-screen QR code to instantly exchange files with PCs or other phones.
+- **Dual-Layer Anti-Suspension Wake-Lock**: Integrates the W3C Screen Wake Lock API alongside a zero-overhead fallback (1fps memory micro-video loop + 44-byte RFC silent WAV audio stream), preventing Android/iOS browser engines from throttling or freezing background uploads.
+- **Live Mobile Perception Badge**: Real-time perception and visual pulsing badge inside the Web Share modal when a mobile device connects, with one-click direct push.
 
-### 3. 手机免 APP 互传
-桌面端点击侧边栏 **“手机扫码互传”** 展开二维码，手机自带相机扫码打开网页即可直接向 PC 或其他手机发送文件，并在“可下载文件”区一键保存文件。
+### 🚀 3. Zero-Disk I/O Network Benchmark
+- **Pure Memory Throughput Diagnostics**: Measure raw physical LAN throughput to any target PC or mobile phone using reusable memory buffers without writing bytes to disk.
+- **Bottleneck Troubleshooting**: Automatically diagnoses bandwidth degradation, identifying common bottlenecks such as active VPN/proxy tunnel interception or 2.4GHz vs 5GHz Wi-Fi mismatch.
+
+### 🔍 4. Radar Device Discovery & Fluid UI
+- **Zero-Config Radar Scanner**: Seamless device perception combining UDP multicast discovery and subnet port scans, rendered on an interactive visual radar.
+- **iOS-Inspired Dynamic Island**: Floating status pill at the top of the interface displaying real-time speed, progress, remaining time, and controls to pause, resume, or abort transfers.
+- **Dual Liquid Glass Themes**: High-contrast, meticulously calibrated Dark and Light glassmorphism themes with customizable Shiba Inu avatar accessories.
 
 ---
 
-## 常见网络与防火墙问题排查
+## Download & Installation
 
-如果您在传输时遇到“找不到设备”或“无法接收”，请检查接收方电脑的以下网络配置：
+### 📥 Download Installer
+- [**`LAN Transfer_Setup_1.2.0.exe` (Latest Stable Release)**](releases/LAN%20Transfer_Setup_1.2.0.exe)
+- [View all past versions on Releases Page](../../releases)
 
-### 1. 将网络类型切换为“专用网络”
-- Windows 默认在“公用网络”下会封锁局域网互连。
-- **操作**：点击电脑右下角的网络图标 -> 属性 -> 将网络配置文件类型由“公用”改为 **“专用”**。
+### 💿 Installation Steps
+1. Download [**`LAN Transfer_Setup_1.2.0.exe`**](releases/LAN%20Transfer_Setup_1.2.0.exe).
+2. Double-click to launch the installer and choose your preferred destination path.
+3. Launch **LAN Transfer** from the desktop shortcut.
+4. For mobile sharing, click **“手机扫码互传” (Mobile Web Share)** on the sidebar to reveal the connection QR code.
 
-### 2. 检查第三方安全软件拦截（如火绒、360）
-- **操作**：尝试暂时关闭或退出第三方防护软件，或在防护软件的“网络防护/主动防御”中将 `LAN Transfer` 及 `12138` / `12139` 端口加入放行白名单。
+---
 
-### 3. 以管理员身份开放端口
-若系统防火墙提示“此设置由您的组织管理”：
-1. 以管理员身份运行 `cmd`。
-2. 执行以下命令放行端口：
+## Network & Firewall Troubleshooting
+
+If devices cannot discover each other or transfers fail to establish, check the following Windows network configurations:
+
+### 1. Set Network Profile to "Private"
+Windows blocks incoming LAN connections by default when configured as a "Public" network.
+- **Fix**: Click Network Icon in system tray -> Properties -> Change Network Profile from **Public** to **Private**.
+
+### 2. Antivirus & Third-Party Firewalls (Huorong, 360, Windows Defender)
+- **Fix**: Add `LAN Transfer.exe` or TCP/UDP ports `12138` and `12139` to your firewall's trusted whitelist.
+
+### 3. Administrator Port Command
+If your firewall rules are managed by your organization:
+1. Open `cmd` as Administrator.
+2. Run:
    ```cmd
    netsh advfirewall firewall add rule name="LAN-Transfer-TCP" dir=in action=allow protocol=TCP localport=12138,12139 program="%LocalAppData%\Programs\LAN Transfer\LAN Transfer.exe"
    ```
 
 ---
 
-## 开发者指南
+## Development & Build
 
-如果您想自行修改代码并进行本地调试或打包：
-
-### 1. 安装依赖
 ```bash
+# 1. Install dependencies
 npm install
-```
 
-### 2. 开发环境调试
-```bash
+# 2. Run in development mode
 npm run dev
-```
 
-### 3. 编译打包出 Windows 安装包
-```bash
+# 3. Build Windows installer package
 npm run build
 ```
 
-打包输出的完整安装包将自动生成在 `releases/` 目录下。
+Packaged installers will be generated under the `releases/` directory.
+
+---
+---
+
+# 🚀 LAN Transfer - 极速局域网文件传输工具 (中文说明)
+
+**LAN Transfer** 是一款基于 **Electron 30 + React 18 + TypeScript + Vite + Tailwind CSS** 构建的高性能局域网文件传输工具。支持 PC 客户端间物理满速 P2P 文件互传，并支持**手机免安装 APP 扫码一键互传**，在局域网内实现零配置、多端全平台的文件传输体验。
+
+---
+
+## 核心功能与架构亮点
+
+### ⚡ 1. 跑满物理带宽与工业级可靠性保障
+- **TCP Raw Socket 极速串流**：采用纯原生流式 TCP 套接字通道，规避 HTTP 分块开销，轻松跑满千兆 / 2.5G / Wi-Fi 6 局域网带宽（实测达 120MB/s+）。
+- **机械硬盘 (HDD) 自适应写入速率平滑队列**：针对超大文件（>20GB）接收端加入动态背压平滑队列，防止突发高速写入导致 OS 脏页饱和与磁盘 I/O 挤占系统卡顿。
+- **未完成传输 `.part` 文件临时隔离与原子替换**：传输中写入临时 `.part` 文件，校验通过后原子重命名替换；传输异常或主动中止时自动清除碎片，绝不残留损坏文件。
+- **单实例互斥锁与端口守护**：依托 `app.requestSingleInstanceLock()` 保证底层 `12138` 与 `12139` 端口独占，防止多开冲突；重复启动自动激活唤醒前台窗口。
+- **传输中安全退出拦截与双重确认**：在传输进行中拦截意外点击关闭窗口事件，弹出防误触弹窗，确保大文件传输不被误杀。
+
+### 📱 2. 手机端免安装 APP 极速扫码互传
+- **网页共享引擎**：内置零依赖 HTTP / WebSocket 微服务，手机连接同一 Wi-Fi 扫码即可直接在 Safari / Chrome 中收发文件，支持 PIN 码安全隔离。
+- **双重屏幕保活与微循环防后台休眠**：采用 W3C Screen Wake Lock API + 1fps 内存微视频 + 44 字节静音 WAV 微音频循环双重兜底，防止低端安卓或 iOS 切后台内核被系统挂起中断。
+- **手机在线感知与即时推送**：手机连接后网页共享弹窗即刻展示动态脉冲感知徽章，支持电脑端一键推送到手机网页下载区。
+
+### 🚀 3. 零磁盘 I/O 纯内存复用测速
+- **物理局域网通道测速**：一键对目标 PC 或手机进行真实吞吐测试，Buffer 内存复用循环，完全不写硬盘。
+- **网络瓶颈诊断提示**：智能识别传输受限原因，并针对代理梯子 TUN/回环劫持、2.4GHz/5GHz 频段混用提供精准优化建议。
+
+### 🔍 4. 动态雷达设备感知与现代美学
+- **智能雷达扫描**：UDP 局域网广播感知结合局域网 TCP 轮询，开机即显在线电脑与手机，支持点击直发与 IP 直连。
+- **iOS 灵动岛交互 (Dynamic Island)**：置顶悬浮动态岛，展示实时速度、剩余时间、并支持暂停、恢复与中止。
+- **白天 / 黑夜高对比度双主题**：精心调校的毛玻璃质感，配备萌趣柴犬头像身份系统。
+
+---
+
+## 快速下载与安装
+
+### 📥 安装包下载
+- [**`LAN Transfer_Setup_1.2.0.exe` (最新稳定版)**](releases/LAN%20Transfer_Setup_1.2.0.exe)
+- [查看所有历史发行版本 (Releases 页面)](../../releases)
+
+### 💿 安装指南
+1. 点击上方链接下载最新的安装包 [**`LAN Transfer_Setup_1.2.0.exe`**](releases/LAN%20Transfer_Setup_1.2.0.exe)。
+2. 双击运行安装程序，可自定义安装路径。
+3. 安装完成后打开桌面快捷方式使用；如需与手机互传，点击侧边栏 **“手机扫码互传”** 展开二维码扫码即可。
+
+---
+
+## 局域网排查指南
+
+若两台设备无法扫描到对方或传输连接失败，请按顺序检查：
+1. **网络配置文件改为“专用”**：Windows 默认的“公用网络”会防火墙阻断局域网嗅探。右下角网络图标 -> 属性 -> 将“公用”改为 **“专用”**。
+2. **安全软件放行**：检查火绒、360 或 Defender，将 `12138` 和 `12139` 端口加入允许放行规则。
+3. **关闭梯子/代理的本地回环接管**：部分 VPN / 代理客户端（如 Clash / v2ray / Sing-box）开启 TUN 模式后会限制本地回环与 LAN 流量，导致测速在 20MB/s 封顶，测速前建议暂时绕过局域网或退出。
+
+---
+
+## 开发者与编译打包
+
+```bash
+# 安装依赖
+npm install
+
+# 本地热更新调试
+npm run dev
+
+# 编译打包出 Windows 安装包
+npm run build
+```
+
+打包生成文件位于 `releases/` 目录。

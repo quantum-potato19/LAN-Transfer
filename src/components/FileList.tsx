@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { File, Trash2, Send, X, Plus, FolderPlus } from 'lucide-react'
 
 interface SelectedFile {
@@ -47,13 +47,32 @@ export const FileList: React.FC<FileListProps> = ({
   const totalSize = files.reduce((acc, f) => acc + f.size, 0)
   const isLight = theme === 'light'
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onCancel()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onCancel])
+
   return (
-    <div className={`absolute inset-0 flex items-center justify-center p-6 z-20 select-none animate-fade-in transition-colors duration-200 ${
-      isLight ? 'bg-slate-900/30' : 'bg-black/60'
-    } backdrop-blur-md`}>
-      <div className={`w-full max-w-lg rounded-3xl p-6 flex flex-col max-h-[85vh] border shadow-2xl transition-colors duration-200 ${
-        isLight ? 'bg-white border-slate-200 text-slate-800' : 'liquid-glass-panel border-white/20 text-white'
-      }`}>
+    <div 
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel()
+      }}
+      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      className={`titlebar-no-drag absolute inset-0 flex items-center justify-center p-6 z-20 select-none animate-fade-in transition-colors duration-200 ${
+        isLight ? 'bg-slate-900/30' : 'bg-black/60'
+      } backdrop-blur-md`}
+    >
+      <div 
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        className={`titlebar-no-drag w-full max-w-lg rounded-3xl p-6 flex flex-col max-h-[85vh] border shadow-2xl transition-colors duration-200 ${
+          isLight ? 'bg-white border-slate-200 text-slate-800' : 'liquid-glass-panel border-white/20 text-white'
+        }`}
+      >
         
         {/* Header */}
         <div className={`flex items-center justify-between border-b pb-4 mb-4 ${
@@ -75,11 +94,12 @@ export const FileList: React.FC<FileListProps> = ({
           <button 
             onClick={onCancel}
             title="关闭"
-            className={`p-2 rounded-xl transition-colors ${
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            className={`titlebar-no-drag p-2 rounded-xl transition-colors ${
               isLight ? 'hover:bg-slate-100 text-slate-400 hover:text-slate-700' : 'hover:bg-white/10 text-white/70 hover:text-white'
             }`}
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 pointer-events-none" />
           </button>
         </div>
 

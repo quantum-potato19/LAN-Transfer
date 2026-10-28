@@ -89,10 +89,14 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
   }
 
   return (
-    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none select-none">
+    <div 
+      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      className="titlebar-no-drag absolute top-4 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none select-none"
+    >
       <div
         onClick={handleCardClick}
-        className={`dynamic-island-pill bg-black/95 text-white flex items-center justify-between px-5 py-2.5 shadow-2xl transition-all duration-500 ease-out border border-white/10 overflow-hidden pointer-events-auto cursor-pointer hover:bg-black/90 active:scale-[0.99] ${dimensions}`}
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        className={`titlebar-no-drag dynamic-island-pill bg-black/95 text-white flex items-center justify-between px-5 py-2.5 shadow-2xl transition-all duration-500 ease-out border border-white/10 overflow-hidden pointer-events-auto cursor-pointer hover:bg-black/90 active:scale-[0.99] ${dimensions}`}
       >
         {/* Progressing/Paused state */}
         {isTransferring && (

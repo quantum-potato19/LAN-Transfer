@@ -273,6 +273,37 @@ export default function App() {
     }
   }, [])
 
+  // Global ESC key listener to close topmost active modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showAppCloseConfirm) {
+          setShowAppCloseConfirm(false)
+          return
+        }
+        if (showCancelConfirm) {
+          setShowCancelConfirm(false)
+          return
+        }
+        if (speedTestState) {
+          handleCloseSpeedTest()
+          return
+        }
+        if (selectedDevice && selectedFiles.length > 0) {
+          setSelectedDevice(null)
+          setSelectedFiles([])
+          return
+        }
+        if (isWebShareOpen) {
+          setIsWebShareOpen(false)
+          return
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showAppCloseConfirm, showCancelConfirm, speedTestState, selectedDevice, selectedFiles, isWebShareOpen])
+
   const handleTransferComplete = (data: any, status: 'completed' | 'failed' | 'declined' | 'cancelled') => {
     // Skip if this transfer was already cancelled or already completed
     if (status !== 'cancelled' && (cancelledIdsRef.current.has(data.id) || completedIdsRef.current.has(data.id))) {
