@@ -2,7 +2,7 @@ node_modules/
 dist/
 dist-electron/
 release/
+releases/
 *.exe
-!releases/*.exe
 .DS_Store
 Thumbs.db

@@ -273,7 +273,7 @@ export const translations = {
     webShareStopped: '服务已关闭',
     webShareStartBtn: '开启服务',
     webShareRunningBtn: '运行中',
-    webShareMobileConnected: '🟢 手机已连入 ({n} 台)',
+    webShareMobileConnected: '手机已连入 ({n} 台)',
     webShareSendToMobile: '发文件',
     webShareScanNotice: '使用手机自带相机或微信扫一扫直接访问',
     webSharePinNotice: '连接配对码 (手动输入网址时使用):',

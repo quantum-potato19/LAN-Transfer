@@ -125,14 +125,6 @@
   color: var(--text-muted) !important;
 }
 
-/* Window control bar icons in light mode */
-.theme-light .titlebar-no-drag .bg-white {
-  background-color: rgba(15, 23, 42, 0.85) !important;
-}
-.theme-light .titlebar-no-drag .border-white {
-  border-color: rgba(15, 23, 42, 0.85) !important;
-}
-
 /* Black/dark overlays need inversion in light mode */
 .theme-light .bg-black\/10 {
   background-color: rgba(0, 0, 0, 0.03) !important;
@@ -149,6 +141,12 @@
 /* Status tag colors — preserve white text inside colored backgrounds */
 .theme-light .bg-blue-600,
 .theme-light .bg-blue-500,
+.theme-light .bg-emerald-600,
+.theme-light .bg-emerald-500,
+.theme-light .bg-sky-600,
+.theme-light .bg-sky-500,
+.theme-light .bg-indigo-600,
+.theme-light .bg-green-600,
 .theme-light .bg-yellow-600,
 .theme-light .bg-red-600,
 .theme-light .bg-gradient-to-tr,
@@ -157,6 +155,12 @@
 }
 .theme-light .bg-blue-600 *,
 .theme-light .bg-blue-500 *,
+.theme-light .bg-emerald-600 *,
+.theme-light .bg-emerald-500 *,
+.theme-light .bg-sky-600 *,
+.theme-light .bg-sky-500 *,
+.theme-light .bg-indigo-600 *,
+.theme-light .bg-green-600 *,
 .theme-light .bg-yellow-600 *,
 .theme-light .bg-red-600 *,
 .theme-light .bg-gradient-to-tr *,
