@@ -20,32 +20,40 @@ interface SseClient {
 }
 
 export class AdaptiveWriteSmoother {
-  private drainHistory: number[] = []
-  private avgDrainMs = 0
+  // Measured disk flush throughput samples (bytes per ms ≈ KB/s * 1.024)
+  private throughputHistory: number[] = []
+  private avgBytesPerMs = Infinity
   private isThrottling = false
 
-  public recordDrain(durationMs: number): number {
-    this.drainHistory.push(durationMs)
-    if (this.drainHistory.length > 8) {
-      this.drainHistory.shift()
-    }
-    this.avgDrainMs = this.drainHistory.reduce((a, b) => a + b, 0) / this.drainHistory.length
+  // Pause the network source only when this much data is buffered in user space.
+  // NOTE: write() returning false (buffer >= highWaterMark) is intentionally NOT used as a trigger,
+  // otherwise the socket stops/starts every highWaterMark bytes and the TCP window collapses.
+  private static readonly FAST_BUFFER = 32 * 1024 * 1024
+  private static readonly SLOW_BUFFER = 8 * 1024 * 1024
+  // Below ~30MB/s sustained flush speed we treat the target as a congested HDD
+  private static readonly SLOW_DISK_BYTES_PER_MS = 30 * 1024
 
-    // HDD write rate smoothing:
-    // If average drain duration > 35ms (HDD mechanical seek / OS page cache congestion),
-    // calculate a dynamic pacing micro-delay to let the physical drive settle without locking the I/O bus.
-    if (this.avgDrainMs > 35) {
-      return Math.min(45, Math.max(5, Math.floor(this.avgDrainMs * 0.35)))
+  public recordDrain(durationMs: number, flushedBytes: number): number {
+    const bytesPerMs = flushedBytes / Math.max(1, durationMs)
+    this.throughputHistory.push(bytesPerMs)
+    if (this.throughputHistory.length > 8) {
+      this.throughputHistory.shift()
+    }
+    this.avgBytesPerMs = this.throughputHistory.reduce((a, b) => a + b, 0) / this.throughputHistory.length
+
+    // HDD write rate smoothing: only add a short settle delay when the disk is genuinely slow.
+    if (this.avgBytesPerMs < AdaptiveWriteSmoother.SLOW_DISK_BYTES_PER_MS) {
+      return Math.min(20, Math.max(2, Math.floor(durationMs * 0.1)))
     }
     return 0
   }
 
-  public shouldThrottle(stream: fs.WriteStream, canWrite: boolean): boolean {
+  public shouldThrottle(stream: fs.WriteStream, _canWrite: boolean): boolean {
     if (this.isThrottling) return false
-    // Tighten buffer threshold to 1.5MB when disk is struggling (avgDrainMs > 50ms)
-    // Otherwise allow 3MB buffer on fast NVMe SSDs
-    const threshold = this.avgDrainMs > 50 ? 1.5 * 1024 * 1024 : 3 * 1024 * 1024
-    return !canWrite || stream.writableLength > threshold
+    const threshold = this.avgBytesPerMs < AdaptiveWriteSmoother.SLOW_DISK_BYTES_PER_MS
+      ? AdaptiveWriteSmoother.SLOW_BUFFER
+      : AdaptiveWriteSmoother.FAST_BUFFER
+    return stream.writableLength > threshold
   }
 
   public getIsThrottling(): boolean {
@@ -57,8 +65,8 @@ export class AdaptiveWriteSmoother {
   }
 
   public reset() {
-    this.drainHistory = []
-    this.avgDrainMs = 0
+    this.throughputHistory = []
+    this.avgBytesPerMs = Infinity
     this.isThrottling = false
   }
 }
@@ -501,7 +509,7 @@ class WebServerManager extends EventEmitter {
     const currentSaveDir = this.saveDir || path.join(os.homedir(), 'Downloads')
     const destPath = getAvailableFilePath(currentSaveDir, fileName)
     const safeName = path.basename(destPath)
-    const writeStream = fs.createWriteStream(destPath, { highWaterMark: 1024 * 1024 })
+    const writeStream = fs.createWriteStream(destPath, { highWaterMark: 8 * 1024 * 1024 })
     req.socket?.setNoDelay(true)
 
     let received = 0
@@ -538,9 +546,10 @@ class WebServerManager extends EventEmitter {
         smoother.setIsThrottling(true)
         req.pause()
         const pauseStart = Date.now()
+        const pendingBytes = writeStream.writableLength
         writeStream.once('drain', () => {
           const drainDuration = Date.now() - pauseStart
-          const smoothDelay = smoother.recordDrain(drainDuration)
+          const smoothDelay = smoother.recordDrain(drainDuration, pendingBytes)
           if (smoothDelay > 0) {
             setTimeout(() => {
               smoother.setIsThrottling(false)

@@ -483,17 +483,19 @@ function startTcpServer() {
               smoother.setIsThrottling(true)
               socket.pause()
               const pauseStart = Date.now()
+              const pendingBytes = fileStream.writableLength
+              const resumeIfAllowed = () => {
+                smoother.setIsThrottling(false)
+                const incomingEntry = activeIncomingTransfers.get(transferId)
+                if (!isSocketEnded && !(incomingEntry && incomingEntry.isPaused)) socket.resume()
+              }
               fileStream.once('drain', () => {
                 const drainDuration = Date.now() - pauseStart
-                const smoothDelay = smoother.recordDrain(drainDuration)
+                const smoothDelay = smoother.recordDrain(drainDuration, pendingBytes)
                 if (smoothDelay > 0) {
-                  setTimeout(() => {
-                    smoother.setIsThrottling(false)
-                    if (!isSocketEnded) socket.resume()
-                  }, smoothDelay)
+                  setTimeout(resumeIfAllowed, smoothDelay)
                 } else {
-                  smoother.setIsThrottling(false)
-                  if (!isSocketEnded) socket.resume()
+                  resumeIfAllowed()
                 }
               })
             }
@@ -724,7 +726,7 @@ function startTcpServer() {
 
               currentDestPath = getAvailableFilePath(saveDir, relativePath)
               currentPartPath = currentDestPath + '.part'
-              fileStream = fs.createWriteStream(currentPartPath, { highWaterMark: 1024 * 1024 })
+              fileStream = fs.createWriteStream(currentPartPath, { highWaterMark: 8 * 1024 * 1024 })
 
               if (currentFileExpectedSize === 0) {
                 fileStream.end()
@@ -1269,24 +1271,16 @@ ipcMain.handle('send-files', async (_event, { targetIp, files, transferId }: { t
 
     function sendSingleFile(clientSocket: net.Socket, file: TransferFile, fileIndex: number): Promise<void> {
       return new Promise((resolveFile, rejectFile) => {
-        let ackTimeout: NodeJS.Timeout | null = null
-
+        // Pipelined mode: a file is considered "sent" once its bytes are handed to the socket.
+        // Receiver file-acks are informational only. Binding them to a resolver caused the ack of
+        // file N to resolve file N+1 early, letting two read streams interleave on one socket.
+        const ackTimeout: NodeJS.Timeout | null = null
+        let settled = false
         const cleanupAndResolve = () => {
-          if (ackTimeout) {
-            clearTimeout(ackTimeout)
-            ackTimeout = null
-          }
-          currentFileAckResolver = null
+          if (settled) return
+          settled = true
           resolveFile()
         }
-
-        currentFileAckResolver = cleanupAndResolve
-
-        // Safety fallback timeout (30 seconds)
-        ackTimeout = setTimeout(() => {
-          console.warn(`File ACK timeout for file [${file.name}], proceeding with fallback`)
-          cleanupAndResolve()
-        }, 30000)
 
         // 1. Send file header with 4-byte BE length prefix
         const header = JSON.stringify({ relPath: file.name, size: file.size, fileIndex })
@@ -1310,8 +1304,8 @@ ipcMain.handle('send-files', async (_event, { targetIp, files, transferId }: { t
           return
         }
 
-        // 2. Stream file data with 1MB chunk buffer for optimal TCP pipeline throughput
-        const readStream = fs.createReadStream(file.path, { highWaterMark: 1024 * 1024 })
+        // 2. Stream file data; 4MB read prefetch keeps disk reads overlapped with socket drains
+        const readStream = fs.createReadStream(file.path, { highWaterMark: 4 * 1024 * 1024 })
         
         const entry = activeOutgoings.get(transferId)
         if (entry) {
@@ -1345,7 +1339,8 @@ ipcMain.handle('send-files', async (_event, { targetIp, files, transferId }: { t
           if (!canWrite) {
             readStream.pause()
             clientSocket.once('drain', () => {
-              readStream.resume()
+              const current = activeOutgoings.get(transferId)
+              if (!current || !current.isPaused) readStream.resume()
             })
           }
         })
