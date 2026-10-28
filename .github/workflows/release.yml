@@ -1,0 +1,58 @@
+name: Build & Release Windows Installer
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      - name: Extract Release Version
+        id: get_version
+        shell: pwsh
+        run: |
+          $packageJson = Get-Content ./package.json | ConvertFrom-Json
+          $ver = $packageJson.version
+          echo "VERSION=$ver" >> $env:GITHUB_ENV
+          if ($env:GITHUB_REF -like "refs/tags/*") {
+            $tag = $env:GITHUB_REF -replace "refs/tags/", ""
+            echo "TAG_NAME=$tag" >> $env:GITHUB_ENV
+          } else {
+            echo "TAG_NAME=v$ver" >> $env:GITHUB_ENV
+          }
+
+      - name: Compile and Package Windows EXE
+        run: npm run build
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: LAN Transfer ${{ env.TAG_NAME }}
+          files: |
+            release/*.exe
+            release/*.blockmap
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

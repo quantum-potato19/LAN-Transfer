@@ -5,7 +5,7 @@
   "author": "GeoffLeng",
   "repository": {
     "type": "git",
-    "url": "https://github.com/GeoffLeng/LAN-Transfer.git"
+    "url": "https://github.com/quantum-potato19/LAN-Transfer.git"
   },
   "main": "dist-electron/main.js",
   "scripts": {

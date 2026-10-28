@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/quantum-potato19/LAN-Transfer/releases/latest">
+  <a href="https://github.com/quantum-potato19/LAN-Transfer/releases">
     <img src="https://img.shields.io/badge/Download-GitHub_Releases-blue?style=for-the-badge&logo=windows&logoColor=white" alt="Download Windows EXE" />
   </a>
 </p>
@@ -58,11 +58,11 @@
 
 ### 📥 Download Installer
 Pre-built Windows binaries are distributed via **GitHub Releases** (binary packages are excluded from Git to keep the repository lightweight):
-- 🚀 [**Download Latest Windows Installer (GitHub Releases)**](https://github.com/quantum-potato19/LAN-Transfer/releases/latest)
+- 🚀 [**Download Latest Windows Installer (GitHub Releases)**](https://github.com/quantum-potato19/LAN-Transfer/releases)
 - 📦 [**View All Release Versions & Changelogs**](https://github.com/quantum-potato19/LAN-Transfer/releases)
 
 ### 💿 Installation Steps
-1. Download the latest installer from [**GitHub Releases**](https://github.com/quantum-potato19/LAN-Transfer/releases/latest).
+1. Visit the [**GitHub Releases**](https://github.com/quantum-potato19/LAN-Transfer/releases) page and download `LAN Transfer_Setup_*.exe`.
 2. Double-click `LAN Transfer_Setup_1.2.0.exe` to run the setup wizard and choose your installation directory.
 3. Launch **LAN Transfer** from the desktop shortcut.
 4. For mobile web sharing, click **“手机扫码互传” (Mobile Web Share)** on the sidebar to display the pairing QR code.
@@ -105,6 +105,11 @@ npm run build
 
 Packaged installers will be generated under the local `release/` directory.
 
+### 🤖 Automated GitHub Actions CI/CD
+This project comes with an automated GitHub Actions CI/CD workflow (`.github/workflows/release.yml`):
+- **Tag-Triggered Release**: Push any Git tag starting with `v*` (e.g. `git tag v1.2.0 && git push origin v1.2.0`) to automatically compile the app and create a GitHub Release with installer assets attached.
+- **Manual Trigger**: Open your repository on GitHub -> go to the **Actions** tab -> select **"Build & Release Windows Installer"** -> click **"Run workflow"** to build on demand.
+
 ---
 ---
 
@@ -143,11 +148,11 @@ Packaged installers will be generated under the local `release/` directory.
 
 ### 📥 安装包下载
 为避免大体积二进制文件污染 Git 仓库历史，安装包现已统一迁移至 **GitHub Releases** 托管分发：
-- 🚀 [**前往 GitHub Releases 下载最新 Windows 安装包**](https://github.com/quantum-potato19/LAN-Transfer/releases/latest)
+- 🚀 [**前往 GitHub Releases 下载最新 Windows 安装包**](https://github.com/quantum-potato19/LAN-Transfer/releases)
 - 📦 [**查看历史全部版本与更新日志**](https://github.com/quantum-potato19/LAN-Transfer/releases)
 
 ### 💿 安装指南
-1. 点击上方链接前往 [**GitHub Releases**](https://github.com/quantum-potato19/LAN-Transfer/releases/latest) 下载最新发布的安装包。
+1. 点击上方链接前往 [**GitHub Releases**](https://github.com/quantum-potato19/LAN-Transfer/releases) 页面下载最新发布的安装程序（`LAN Transfer_Setup_*.exe`）。
 2. 双击运行 `LAN Transfer_Setup_1.2.0.exe` 安装程序，按提示完成安装。
 3. 安装完成后打开桌面快捷方式使用；如需与手机互传，点击侧边栏 **“手机扫码互传”** 展开二维码扫码即可。
 
@@ -176,3 +181,8 @@ npm run build
 ```
 
 打包生成文件位于本地 `release/` 目录。
+
+### 🤖 GitHub Actions 自动化云端打包发布
+项目已集成 GitHub Actions 自动化流水线（位于 `.github/workflows/release.yml`）：
+- **推送 Tag 自动打包发布**：本地执行 `git tag v1.2.0 && git push origin v1.2.0`，GitHub 云端虚拟机会自动编译前端、打包 Electron 安装包并创建 GitHub Release 发布附件。
+- **手动一键触发**：在 GitHub 仓库页面点击 **Actions** -> 选择 **"Build & Release Windows Installer"** -> 点击 **"Run workflow"** 即可随时手动打包。
