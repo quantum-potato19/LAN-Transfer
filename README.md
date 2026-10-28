@@ -12,8 +12,8 @@
 </p>
 
 <p align="center">
-  <a href="releases/LAN%20Transfer_Setup_1.2.0.exe">
-    <img src="https://img.shields.io/badge/Download-Windows_EXE-blue?style=for-the-badge&logo=windows&logoColor=white" alt="Download Windows EXE" />
+  <a href="https://github.com/quantum-potato19/LAN-Transfer/releases/latest">
+    <img src="https://img.shields.io/badge/Download-GitHub_Releases-blue?style=for-the-badge&logo=windows&logoColor=white" alt="Download Windows EXE" />
   </a>
 </p>
 
@@ -57,14 +57,15 @@
 ## Download & Installation
 
 ### 📥 Download Installer
-- [**`LAN Transfer_Setup_1.2.0.exe` (Latest Stable Release)**](releases/LAN%20Transfer_Setup_1.2.0.exe)
-- [View all past versions on Releases Page](../../releases)
+Pre-built Windows binaries are distributed via **GitHub Releases** (binary packages are excluded from Git to keep the repository lightweight):
+- 🚀 [**Download Latest Windows Installer (GitHub Releases)**](https://github.com/quantum-potato19/LAN-Transfer/releases/latest)
+- 📦 [**View All Release Versions & Changelogs**](https://github.com/quantum-potato19/LAN-Transfer/releases)
 
 ### 💿 Installation Steps
-1. Download [**`LAN Transfer_Setup_1.2.0.exe`**](releases/LAN%20Transfer_Setup_1.2.0.exe).
-2. Double-click to launch the installer and choose your preferred destination path.
+1. Download the latest installer from [**GitHub Releases**](https://github.com/quantum-potato19/LAN-Transfer/releases/latest).
+2. Double-click `LAN Transfer_Setup_1.2.0.exe` to run the setup wizard and choose your installation directory.
 3. Launch **LAN Transfer** from the desktop shortcut.
-4. For mobile sharing, click **“手机扫码互传” (Mobile Web Share)** on the sidebar to reveal the connection QR code.
+4. For mobile web sharing, click **“手机扫码互传” (Mobile Web Share)** on the sidebar to display the pairing QR code.
 
 ---
 
@@ -102,7 +103,7 @@ npm run dev
 npm run build
 ```
 
-Packaged installers will be generated under the `releases/` directory.
+Packaged installers will be generated under the local `release/` directory.
 
 ---
 ---
@@ -141,12 +142,13 @@ Packaged installers will be generated under the `releases/` directory.
 ## 快速下载与安装
 
 ### 📥 安装包下载
-- [**`LAN Transfer_Setup_1.2.0.exe` (最新稳定版)**](releases/LAN%20Transfer_Setup_1.2.0.exe)
-- [查看所有历史发行版本 (Releases 页面)](../../releases)
+为避免大体积二进制文件污染 Git 仓库历史，安装包现已统一迁移至 **GitHub Releases** 托管分发：
+- 🚀 [**前往 GitHub Releases 下载最新 Windows 安装包**](https://github.com/quantum-potato19/LAN-Transfer/releases/latest)
+- 📦 [**查看历史全部版本与更新日志**](https://github.com/quantum-potato19/LAN-Transfer/releases)
 
 ### 💿 安装指南
-1. 点击上方链接下载最新的安装包 [**`LAN Transfer_Setup_1.2.0.exe`**](releases/LAN%20Transfer_Setup_1.2.0.exe)。
-2. 双击运行安装程序，可自定义安装路径。
+1. 点击上方链接前往 [**GitHub Releases**](https://github.com/quantum-potato19/LAN-Transfer/releases/latest) 下载最新发布的安装包。
+2. 双击运行 `LAN Transfer_Setup_1.2.0.exe` 安装程序，按提示完成安装。
 3. 安装完成后打开桌面快捷方式使用；如需与手机互传，点击侧边栏 **“手机扫码互传”** 展开二维码扫码即可。
 
 ---
@@ -173,4 +175,4 @@ npm run dev
 npm run build
 ```
 
-打包生成文件位于 `releases/` 目录。
+打包生成文件位于本地 `release/` 目录。
